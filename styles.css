@@ -1,0 +1,146 @@
+﻿:root {
+  --bg: #f7f5ef;
+  --ink: #182029;
+  --muted: #697386;
+  --line: #d8d3c7;
+  --panel: #ffffff;
+  --accent: #087f8c;
+  --accent-strong: #075f69;
+  --gold: #c8892d;
+  --danger: #b42318;
+  --shadow: 0 10px 28px rgba(24, 32, 41, 0.08);
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+button, input, select { font: inherit; }
+button, .file-button { border: 1px solid var(--accent); background: var(--accent); color: white; min-height: 40px; padding: 0 14px; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px; white-space: nowrap; }
+button:hover, .file-button:hover { background: var(--accent-strong); }
+button.secondary, .file-button.secondary { color: var(--accent); background: white; }
+button.danger { background: white; color: var(--danger); border-color: #e5aaa4; }
+.file-button input { display: none; }
+.topbar { min-height: 116px; padding: 22px clamp(16px, 3vw, 36px); display: flex; align-items: center; justify-content: space-between; gap: 20px; border-bottom: 1px solid var(--line); background: #fffdf8; }
+.eyebrow { margin: 0 0 4px; color: var(--gold); font-size: 0.78rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0; }
+h1, h2 { margin: 0; letter-spacing: 0; }
+h1 { font-size: clamp(1.65rem, 3vw, 2.4rem); }
+h2 { font-size: 1.08rem; }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; }
+.layout { width: min(1560px, 100%); margin: 0 auto; padding: 18px clamp(12px, 2vw, 28px) 36px; display: grid; grid-template-columns: minmax(260px, 0.8fr) minmax(340px, 1.2fr) minmax(360px, 1fr); grid-template-areas: "setup pick dashboard" "board board players"; gap: 16px; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); padding: 16px; min-width: 0; }
+.setup-panel { grid-area: setup; } .pick-panel { grid-area: pick; } .dashboard-panel { grid-area: dashboard; } .board-panel { grid-area: board; } .players-panel { grid-area: players; }
+.section-title { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
+.pill { display: inline-flex; align-items: center; min-height: 28px; padding: 4px 10px; border-radius: 999px; background: #eef7f8; color: var(--accent-strong); font-size: 0.82rem; font-weight: 700; }
+label { display: grid; gap: 6px; color: var(--muted); font-size: 0.82rem; font-weight: 700; }
+input, select { width: 100%; min-height: 40px; border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; background: white; color: var(--ink); }
+.settings-grid, .pick-form, .filters { display: grid; gap: 12px; }
+.settings-grid { grid-template-columns: 1fr 1fr; }
+.settings-grid label:last-child { grid-column: 1 / -1; }
+.owners-list { display: grid; gap: 8px; margin-top: 14px; }
+.owner-row { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; }
+.summary-grid { display: grid; grid-template-columns: repeat(4, minmax(74px, 1fr)); gap: 8px; margin-bottom: 12px; }
+.metric { border: 1px solid var(--line); border-radius: 6px; padding: 10px; background: #fffdf8; }
+.metric span { display: block; color: var(--muted); font-size: 0.72rem; font-weight: 800; text-transform: uppercase; }
+.metric strong { display: block; margin-top: 3px; font-size: 1.08rem; }
+.draft-board { display: grid; grid-template-columns: repeat(auto-fit, minmax(168px, 1fr)); gap: 10px; }
+.pick-card { min-height: 92px; border: 1px solid var(--line); border-left: 5px solid var(--accent); border-radius: 7px; padding: 10px; background: #fffdf8; }
+.pick-card.empty { border-left-color: #cbc2b2; color: var(--muted); }
+.pick-meta { display: flex; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 0.78rem; font-weight: 800; }
+.pick-player { margin-top: 9px; font-weight: 800; }
+.pick-owner { margin-top: 3px; color: var(--muted); font-size: 0.86rem; }
+.table-wrap { overflow: auto; border: 1px solid var(--line); border-radius: 7px; }
+table { width: 100%; border-collapse: collapse; min-width: 620px; }
+th, td { padding: 10px; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; }
+th { position: sticky; top: 0; background: #fffdf8; color: var(--muted); font-size: 0.76rem; text-transform: uppercase; }
+td { font-size: 0.9rem; }
+tr:last-child td { border-bottom: 0; }
+.empty-state { color: var(--muted); padding: 18px 10px; }
+@media (max-width: 1100px) { .topbar { align-items: flex-start; flex-direction: column; } .actions { justify-content: flex-start; } .layout { grid-template-columns: 1fr 1fr; grid-template-areas: "setup pick" "dashboard dashboard" "board board" "players players"; } }
+@media (max-width: 720px) { .layout { grid-template-columns: 1fr; grid-template-areas: "setup" "pick" "dashboard" "players" "board"; } .panel { padding: 12px; } .owner-row, .settings-grid { grid-template-columns: 1fr; } .summary-grid { grid-template-columns: repeat(2, 1fr); } button, .file-button { width: 100%; } }
+.draft-order-panel { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+.draft-order-list { display: grid; gap: 8px; }
+.order-row { display: grid; grid-template-columns: 44px 1fr; gap: 8px; align-items: center; }
+.order-row span { color: var(--muted); font-size: 0.82rem; font-weight: 800; }
+.pick-form.locked { opacity: 0.58; }
+.pick-form.locked button, .pick-form.locked input { pointer-events: none; }
+@media (max-width: 720px) { .order-row { grid-template-columns: 38px 1fr; } }
+
+.trade-panel { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+.trade-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.trade-form label:first-child { grid-column: 1 / -1; }
+.trade-list { display: grid; gap: 8px; margin-top: 12px; }
+.trade-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; border: 1px solid var(--line); border-radius: 6px; padding: 9px; background: #fffdf8; }
+.trade-row strong { display: block; font-size: 0.9rem; }
+.trade-row span { color: var(--muted); font-size: 0.8rem; }
+.pick-card.compensation { border-left-color: var(--gold); }
+.pick-card.traded { background: #f4fbfc; }
+@media (max-width: 720px) { .trade-form, .trade-row { grid-template-columns: 1fr; } }
+.dashboard-title { align-items: end; }
+.dashboard-switch { min-width: 190px; max-width: 260px; }
+@media (max-width: 720px) { .dashboard-title { align-items: stretch; flex-direction: column; } .dashboard-switch { max-width: none; width: 100%; } }
+.start-draft { width: 100%; margin-bottom: 14px; min-height: 46px; font-weight: 800; }
+button:disabled { opacity: 0.48; cursor: not-allowed; }
+body.draft-started .setup-panel { display: none; }
+body.draft-started .layout { grid-template-columns: minmax(340px, 0.75fr) minmax(360px, 1fr) minmax(380px, 1fr); grid-template-areas: "pick dashboard players" "board board players"; }
+body:not(.draft-started) #edit-setup { display: none; }
+@media (max-width: 1100px) { body.draft-started .layout { grid-template-columns: 1fr 1fr; grid-template-areas: "pick dashboard" "players players" "board board"; } }
+@media (max-width: 720px) { body.draft-started .layout { grid-template-columns: 1fr; grid-template-areas: "pick" "dashboard" "players" "board"; } }
+.keeper-panel { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+.keeper-list { display: grid; gap: 10px; }
+.keeper-row { display: grid; grid-template-columns: 88px repeat(3, minmax(0, 1fr)); gap: 8px; align-items: center; }
+.keeper-row strong { font-size: 0.86rem; }
+.pick-card.keeper { border-left-color: #4f46e5; background: #f7f7ff; }
+.pick-card.keeper .pick-player::after { content: " Keeper"; color: #4f46e5; font-size: 0.72rem; font-weight: 800; text-transform: uppercase; }
+@media (max-width: 720px) { .keeper-row { grid-template-columns: 1fr; } }
+.team-links { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 14px; }
+.team-links a { min-height: 36px; border: 1px solid var(--line); border-radius: 6px; display: flex; align-items: center; justify-content: center; color: var(--accent-strong); text-decoration: none; font-weight: 800; background: #fffdf8; }
+.owner-page-panel { display: none; grid-area: owner; }
+.owner-page-titlebar { align-items: end; }
+.owner-claim-panel { border: 1px solid var(--line); border-radius: 8px; background: #fffdf8; padding: 16px; margin-bottom: 14px; display: grid; gap: 8px; }
+.owner-claim-panel[hidden] { display: none; }
+.owner-claim-panel strong { font-size: 1rem; }
+.owner-claim-panel span { color: var(--muted); }
+.claim-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 6px; }
+.owner-filters { grid-template-columns: minmax(220px, 1fr) minmax(150px, 0.35fr) minmax(150px, 0.35fr); margin-bottom: 12px; }
+.owner-clock-panel { border: 1px solid var(--line); border-left: 5px solid var(--muted); border-radius: 8px; padding: 12px; margin-bottom: 14px; background: #fffdf8; display: grid; gap: 4px; }
+.owner-clock-panel strong { font-size: 1.08rem; }
+.owner-clock-panel span { color: var(--muted); }
+.owner-clock-panel.is-on-clock { border-left-color: var(--danger); background: #fff5f3; }
+.owner-board-wrap { margin-bottom: 14px; }
+.owner-draft-board { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; max-height: 340px; overflow: auto; padding-right: 4px; }
+.owner-board-card { min-height: 86px; }
+.owner-board-card.on-clock-card { outline: 3px solid rgba(180, 35, 24, 0.2); border-left-color: var(--danger); }
+.owner-board-card.my-pick-card:not(.on-clock-card) { border-left-color: var(--gold); }
+.draft-player-button { min-width: 64px; min-height: 32px; padding: 0 10px; }
+.flag-button { min-width: 38px; min-height: 32px; padding: 0 8px; background: white; color: var(--muted); border-color: var(--line); }
+.flag-button.flagged { background: #fff7df; color: #9a6700; border-color: #e0b957; }
+body.owner-page .setup-panel, body.owner-page .pick-panel, body.owner-page .dashboard-panel, body.owner-page .board-panel, body.owner-page .players-panel { display: none; }
+body.owner-page .owner-page-panel { display: block; }
+body.owner-page .layout { grid-template-columns: 1fr; grid-template-areas: "owner"; }
+body #owner-home { display: none; }
+@media (max-width: 720px) { .team-links, .owner-filters { grid-template-columns: 1fr; } .owner-page-titlebar { align-items: stretch; flex-direction: column; } }
+body:not(.draft-started):not(.owner-page) .pick-panel,
+body:not(.draft-started):not(.owner-page) .dashboard-panel,
+body:not(.draft-started):not(.owner-page) .board-panel,
+body:not(.draft-started):not(.owner-page) .players-panel,
+body:not(.draft-started):not(.owner-page) #owner-home {
+  display: none;
+}
+body:not(.draft-started):not(.owner-page) .layout {
+  grid-template-columns: minmax(320px, 760px);
+  grid-template-areas: "setup";
+  justify-content: center;
+}
+body:not(.draft-started):not(.owner-page) .setup-panel {
+  grid-area: setup;
+}
+body:not(.draft-started):not(.owner-page) .owners-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+@media (max-width: 720px) {
+  body:not(.draft-started):not(.owner-page) .layout {
+    grid-template-columns: 1fr;
+  }
+  body:not(.draft-started):not(.owner-page) .owners-list {
+    grid-template-columns: 1fr;
+  }
+}
+

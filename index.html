@@ -1,0 +1,152 @@
+﻿<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Fantasy Basketball Draft</title>
+    <link rel="stylesheet" href="styles.css?v=draft-hq-1">
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Offline draft room</p>
+        <h1>Fantasy Basketball Draft</h1>
+      </div>
+      <div class="actions">
+        <label class="file-button">Import CSV<input id="csv-input" type="file" accept=".csv,text/csv"></label>
+        <button id="export-state" type="button">Export</button>
+        <label class="file-button secondary">Import State<input id="state-input" type="file" accept=".json,application/json"></label>
+        <button id="owner-home" class="secondary" type="button">Draft Room</button>
+        <button id="edit-setup" class="secondary" type="button">Edit Setup</button>
+        <button id="reset-draft" class="danger" type="button">Reset</button>
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="panel setup-panel" aria-labelledby="setup-title">
+        <div class="section-title"><h2 id="setup-title">League</h2><span id="order-status" class="pill">Set order</span></div>
+        <button id="start-draft" class="start-draft" type="button" disabled>Start Draft</button>
+        <div class="settings-grid">
+          <label>Rounds<input id="rounds-input" type="number" min="1" max="30" value="13"></label>
+          <label>Pick Timer<input id="timer-input" type="text" value="Offline"></label>
+        </div>
+        <div id="owners-list" class="owners-list"></div>
+        <div id="team-links" class="team-links"></div>
+        <div class="draft-order-panel">
+          <div class="section-title"><h2>Draft Order</h2><button id="save-order" type="button">Save Order</button></div>
+          <div id="draft-order-list" class="draft-order-list"></div>
+        </div>
+                <div class="keeper-panel">
+          <div class="section-title"><h2>Keepers</h2><span class="pill">Up to 3 each</span></div>
+          <div id="keeper-list" class="keeper-list"></div>
+        </div>
+        <div class="trade-panel">
+          <div class="section-title"><h2>Pick Trades</h2><button id="add-trade" type="button">Add Trade</button></div>
+          <div class="trade-form">
+            <label>Type<select id="trade-type"><option value="swap">Swap picks</option><option value="transfer">Transfer pick</option></select></label>
+            <label>Giving Owner<select id="trade-from-owner"></select></label>
+            <label>Giving Round<input id="trade-from-round" type="number" min="1" max="30" value="4"></label>
+            <label>Receiving Owner<select id="trade-to-owner"></select></label>
+            <label id="trade-to-round-label">Receiving Round<input id="trade-to-round" type="number" min="1" max="30" value="10"></label>
+          </div>
+          <div id="trade-list" class="trade-list"></div>
+        </div>
+      </section>
+
+      <section class="panel pick-panel" aria-labelledby="pick-title">
+        <div class="section-title"><h2 id="pick-title">Enter Pick</h2><span id="next-pick-label" class="pill">Pick 1</span></div>
+        <form id="pick-form" class="pick-form">
+          <label>Owner<select id="pick-owner" disabled></select></label>
+          <label>Player<input id="pick-player" type="text" list="available-players" placeholder="Type player name" autocomplete="off"><datalist id="available-players"></datalist></label>
+          <button type="submit">Draft Player</button>
+        </form>
+      </section>
+
+      <section class="panel dashboard-panel" aria-labelledby="dashboard-title">
+        <div class="section-title dashboard-title"><h2 id="dashboard-title">Team Dashboard</h2><label class="dashboard-switch">Team<select id="owner-select"></select></label></div>
+        <div id="team-summary" class="summary-grid"></div>
+        <div class="table-wrap"><table><thead><tr><th>Player</th><th>Pos</th><th>Team</th><th>Rank</th></tr></thead><tbody id="team-roster"></tbody></table></div>
+      </section>
+
+      <section class="panel board-panel" aria-labelledby="board-title">
+        <div class="section-title"><h2 id="board-title">Draft Board</h2><span id="draft-count" class="pill">0 drafted</span></div>
+        <div id="draft-board" class="draft-board"></div>
+      </section>
+
+      
+      <section id="owner-page-panel" class="panel owner-page-panel" aria-labelledby="owner-page-title">
+        <div class="section-title owner-page-titlebar">
+          <div>
+            <h2 id="owner-page-title">Owner Page</h2>
+            <span id="owner-page-count" class="pill">0 available</span>
+          </div>
+          <span class="pill">Private board</span>
+        </div>
+        <div id="owner-claim-panel" class="owner-claim-panel">
+          <strong id="owner-claim-name">Confirm owner page</strong>
+          <span>This browser will be locked to this owner page after confirmation.</span>
+          <div class="claim-actions">
+            <button id="confirm-owner-page" type="button">This Is My Page</button>
+            <button id="cancel-owner-page" class="secondary" type="button">Go Back</button>
+          </div>
+        </div>
+        <div id="owner-page-summary" class="summary-grid"></div>
+        <div id="owner-clock-panel" class="owner-clock-panel"></div>
+        <div class="owner-board-wrap">
+          <div class="section-title">
+            <h2>Live Board</h2>
+            <span id="owner-board-count" class="pill">0 picks</span>
+          </div>
+          <div id="owner-draft-board" class="owner-draft-board"></div>
+        </div>
+        <div class="filters owner-filters">
+          <input id="owner-player-search" type="search" placeholder="Search available players">
+          <select id="owner-sort">
+            <option value="rank">Sort by ADP</option>
+            <option value="pts">Sort by PTS</option>
+            <option value="ast">Sort by AST</option>
+            <option value="stl">Sort by STL</option>
+            <option value="reb">Sort by REB</option>
+            <option value="blk">Sort by BLK</option>
+            <option value="to">Sort by TO</option>
+            <option value="fg_pct">Sort by FG%</option>
+            <option value="ft_pct">Sort by FT%</option>
+            <option value="threepm">Sort by 3PM</option>
+          </select>
+          <select id="owner-flag-filter">
+            <option value="all">All available</option>
+            <option value="flagged">Flagged only</option>
+          </select>
+        </div>
+        <div class="table-wrap"><table><thead><tr><th>Draft</th><th>Flag</th><th>ADP</th><th>Player</th><th>Pos</th><th>Team</th><th>PTS</th><th>AST</th><th>STL</th><th>REB</th><th>BLK</th><th>TO</th><th>FG%</th><th>FT%</th><th>3PM</th></tr></thead><tbody id="owner-player-body"></tbody></table></div>
+      </section>
+
+      <section class="panel players-panel" aria-labelledby="players-title">
+        <div class="section-title"><h2 id="players-title">Available Players</h2><span id="player-count" class="pill">0 loaded</span></div>
+        <div class="filters"><input id="search-input" type="search" placeholder="Search player, team, or position"><select id="position-filter"><option value="">All positions</option><option value="PG">PG</option><option value="SG">SG</option><option value="SF">SF</option><option value="PF">PF</option><option value="C">C</option></select></div>
+        <div class="table-wrap"><table><thead><tr><th>ADP</th><th>Player</th><th>Pos</th><th>Team</th><th>PTS</th><th>AST</th><th>STL</th><th>REB</th><th>BLK</th><th>TO</th><th>FG%</th><th>FT%</th><th>3PM</th></tr></thead><tbody id="players-body"></tbody></table></div>
+      </section>
+    </main>
+
+    <template id="owner-row-template"><div class="owner-row"><input class="owner-name" type="text" aria-label="Owner name"><input class="team-name" type="text" aria-label="Team name"><button class="remove-owner" type="button">Remove</button></div></template>
+    <script src="app.js?v=draft-hq-1"></script>
+  </body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

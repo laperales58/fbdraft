@@ -1,0 +1,6 @@
+player,team,pos,rank,pts,reb,ast,stl,blk,threepm,fg_pct,ft_pct,to
+Nikola Jokic,DEN,C,1,26.4,12.4,9.0,1.4,0.9,1.2,0.583,0.817,3.1
+Shai Gilgeous-Alexander,OKC,PG,2,30.1,5.5,6.2,1.9,0.9,1.3,0.535,0.874,2.2
+Victor Wembanyama,SAS,PF/C,3,23.8,11.2,4.1,1.3,3.8,1.8,0.490,0.805,3.4
+Luka Doncic,LAL,PG/SG,4,30.0,8.6,9.1,1.3,0.4,3.8,0.486,0.782,3.9
+Anthony Edwards,MIN,SG/SF,5,27.1,5.6,5.0,1.3,0.6,3.2,0.463,0.840,3.0
