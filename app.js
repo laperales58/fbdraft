@@ -1,6 +1,8 @@
-﻿const STORAGE_KEY = "fantasyBasketballDraftState.v1";
-const OWNER_LOCK_KEY = "fantasyBasketballOwnerLock.v1";
+const STORAGE_KEY = "fantasyBasketballDraftState.v1";
+const ADMIN_OWNER_NAME = "Luis";
 const OWNER_NAMES = ["Luis", "Daniel", "Theo", "Henry", "Reed", "Adolfo", "Ivan", "Clay", "Mario", "Frank", "Z", "Yoshi"];
+let activeOwnerTab = "board";
+let ownerRosterViewId = "";
 
 function makeOwner(name, index) {
   return { id: "owner-" + (index + 1), owner: name, team: name };
@@ -39,12 +41,12 @@ const els = {
   ownerPagePanel: document.querySelector("#owner-page-panel"),
   ownerPageTitle: document.querySelector("#owner-page-title"),
   ownerPageCount: document.querySelector("#owner-page-count"),
-  ownerClaimPanel: document.querySelector("#owner-claim-panel"),
-  ownerClaimName: document.querySelector("#owner-claim-name"),
-  confirmOwnerPage: document.querySelector("#confirm-owner-page"),
-  cancelOwnerPage: document.querySelector("#cancel-owner-page"),
+  ownerAdminPanel: document.querySelector("#owner-admin-panel"),
+  ownerAdminHome: document.querySelector("#owner-admin-home"),
+  ownerAdminReset: document.querySelector("#owner-admin-reset"),
   ownerPageSelect: document.querySelector("#owner-page-select"),
   ownerPageSummary: document.querySelector("#owner-page-summary"),
+  ownerTabs: document.querySelector("#owner-tabs"),
   ownerPlayerSearch: document.querySelector("#owner-player-search"),
   ownerSort: document.querySelector("#owner-sort"),
   ownerFlagFilter: document.querySelector("#owner-flag-filter"),
@@ -52,11 +54,16 @@ const els = {
   ownerBoardCount: document.querySelector("#owner-board-count"),
   ownerDraftBoard: document.querySelector("#owner-draft-board"),
   ownerPlayerBody: document.querySelector("#owner-player-body"),
+  ownerRosterSelect: document.querySelector("#owner-roster-select"),
+  ownerRosterCount: document.querySelector("#owner-roster-count"),
+  ownerRosterBody: document.querySelector("#owner-roster-body"),
   ownerTemplate: document.querySelector("#owner-row-template"),
   orderStatus: document.querySelector("#order-status"),
   draftOrderList: document.querySelector("#draft-order-list"),
   saveOrder: document.querySelector("#save-order"),
+  keepersInput: document.querySelector("#keepers-input"),
   keeperList: document.querySelector("#keeper-list"),
+  tradesInput: document.querySelector("#trades-input"),
   tradeType: document.querySelector("#trade-type"),
   tradeFromOwner: document.querySelector("#trade-from-owner"),
   tradeFromRound: document.querySelector("#trade-from-round"),
@@ -102,7 +109,7 @@ function normalizeKeepers(raw) {
 
 function saveState() { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
 function normalize(value) { return String(value == null ? "" : value).trim(); }
-function key(value) { return normalize(value).toLowerCase(); }
+function key(value) { return normalize(value).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase(); }
 function escapeHtml(value) { return normalize(value).replace(/[&<>"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;" }[char])); }
 function toNumber(value) { const match = normalize(value).replace("%", "").match(/-?\d+(\.\d+)?/); const number = match ? Number(match[0]) : 0; return Number.isFinite(number) ? number : 0; }
 function ownerById(ownerId) { return state.owners.find((owner) => owner.id === ownerId) || state.owners[0]; }
@@ -138,6 +145,12 @@ function readColumn(record, names) {
   return "";
 }
 
+function csvRecords(text) {
+  const rows = parseCsv(text);
+  const headers = (rows.shift() || []).map((header) => key(header));
+  return rows.map((row) => Object.fromEntries(headers.map((header, i) => [header, row[i] == null ? "" : row[i]])));
+}
+
 function playerFromRecord(record, index) {
   const player = normalize(readColumn(record, ["player", "name", "player name"]));
   return {
@@ -160,9 +173,7 @@ function playerFromRecord(record, index) {
 }
 
 function importPlayers(text, options = {}) {
-  const rows = parseCsv(text);
-  const headers = (rows.shift() || []).map((header) => key(header));
-  state.players = rows.map((row, index) => playerFromRecord(Object.fromEntries(headers.map((header, i) => [header, row[i] == null ? "" : row[i]])), index))
+  state.players = csvRecords(text).map((record, index) => playerFromRecord(record, index))
     .filter((player) => player.player)
     .sort((a, b) => (a.rank || 9999) - (b.rank || 9999) || a.player.localeCompare(b.player));
   saveState();
@@ -219,8 +230,9 @@ function computePickSchedule() {
   for (let index = 0; index < baseCount; index += 1) {
     const originalOwnerId = baseOwnerIdForPickIndex(index);
     const ownerId = tradeMap.get(index) || originalOwnerId;
-    counts[ownerId] = (counts[ownerId] || 0) + 1;
-    schedule.push({ index, pick: index + 1, round: Math.floor(index / ownerCount) + 1, roundLabel: "R" + (Math.floor(index / ownerCount) + 1), originalOwnerId, ownerId, traded: ownerId !== originalOwnerId, compensation: false });
+    const skipped = (counts[ownerId] || 0) >= state.rounds;
+    if (!skipped) counts[ownerId] = (counts[ownerId] || 0) + 1;
+    schedule.push({ index, pick: index + 1, round: Math.floor(index / ownerCount) + 1, roundLabel: "R" + (Math.floor(index / ownerCount) + 1), originalOwnerId, ownerId, traded: ownerId !== originalOwnerId, compensation: false, skipped });
   }
 
   let extraRound = 1;
@@ -228,7 +240,7 @@ function computePickSchedule() {
     for (const ownerId of orderedOwnerIds()) {
       if ((counts[ownerId] || 0) < state.rounds) {
         counts[ownerId] = (counts[ownerId] || 0) + 1;
-        schedule.push({ index: schedule.length, pick: schedule.length + 1, round: state.rounds + extraRound, roundLabel: "Extra " + extraRound, originalOwnerId: ownerId, ownerId, traded: false, compensation: true });
+        schedule.push({ index: schedule.length, pick: schedule.length + 1, round: state.rounds + extraRound, roundLabel: "Extra " + extraRound, originalOwnerId: ownerId, ownerId, traded: false, compensation: true, skipped: false });
       }
     }
     extraRound += 1;
@@ -241,7 +253,7 @@ function keeperForScheduleIndex(schedule, index) {
   const slot = schedule[index];
   if (!slot) return null;
   const names = keeperNames(slot.ownerId);
-  if (!names.length || slot.compensation) return null;
+  if (!names.length || slot.skipped) return null;
   let ownerSlotCount = 0;
   for (let i = 0; i <= index; i += 1) {
     if (schedule[i].ownerId === slot.ownerId && !schedule[i].compensation) ownerSlotCount += 1;
@@ -261,6 +273,9 @@ function keeperForScheduleIndex(schedule, index) {
     stl: player ? player.stl : 0,
     blk: player ? player.blk : 0,
     threepm: player ? player.threepm : 0,
+    fg_pct: player ? player.fg_pct : 0,
+    ft_pct: player ? player.ft_pct : 0,
+    to: player ? player.to : 0,
     keeper: true,
     ownerId: slot.ownerId,
     pickIndex: index
@@ -273,6 +288,7 @@ function nextOpenScheduleIndex() {
   const schedule = computePickSchedule();
   const picks = draftedPickMap();
   for (let i = 0; i < schedule.length; i += 1) {
+    if (schedule[i].skipped) continue;
     if (keeperForScheduleIndex(schedule, i)) continue;
     if (!picks.has(i)) return i;
   }
@@ -323,11 +339,30 @@ function teamPlayers(ownerId) {
   return keepers.concat(drafted).sort((a, b) => (a.pickIndex || 0) - (b.pickIndex || 0));
 }
 
-function availablePlayers() {
+function primaryPosition(player) {
+  return normalize(player.pos).split(/[\/, ]+/).filter(Boolean)[0] || "Other";
+}
+
+function positionCounts(roster) {
+  const positions = ["PG", "SG", "SF", "PF", "C"];
+  const counts = Object.fromEntries(positions.map((position) => [position, 0]));
+  for (const player of roster) {
+    const position = primaryPosition(player);
+    counts[position] = (counts[position] || 0) + 1;
+  }
+  return counts;
+}
+
+function positionSummaryHtml(roster) {
+  const counts = positionCounts(roster);
+  return Object.keys(counts).map((position) => "<div class=\"position-chip\"><span>" + escapeHtml(position) + "</span><strong>" + counts[position] + "</strong></div>").join("");
+}
+
+function availablePlayers(options = {}) {
   const drafted = draftedPlayerIds();
   const draftedNames = draftedPlayerNames();
-  const search = key(els.searchInput.value);
-  const position = els.positionFilter.value;
+  const search = key(options.search == null ? els.searchInput.value : options.search);
+  const position = options.position == null ? els.positionFilter.value : options.position;
   return state.players.filter((player) => {
     if (drafted.has(player.id) || draftedNames.has(key(player.player))) return false;
     if (position && !player.pos.split(/[\/, ]+/).includes(position)) return false;
@@ -375,13 +410,12 @@ function renderDraftOrder() {
   const current = orderedOwnerIds();
   els.draftOrderList.innerHTML = "";
   for (let index = 0; index < state.owners.length; index += 1) {
-    const row = document.createElement("label");
+    const owner = ownerById(current[index] || state.owners[index].id);
+    const row = document.createElement("div");
     row.className = "order-row";
-    const select = document.createElement("select");
-    select.dataset.index = String(index);
-    select.innerHTML = ownerOptions(current[index] || state.owners[index].id);
-    row.innerHTML = "<span>" + (index + 1) + ".</span>";
-    row.append(select);
+    row.draggable = true;
+    row.dataset.ownerId = owner.id;
+    row.innerHTML = "<span class=\"order-slot\">" + (index + 1) + "</span><button class=\"order-handle\" type=\"button\" aria-label=\"Drag " + escapeHtml(owner.owner) + "\">::</button><strong>" + escapeHtml(owner.owner) + "</strong><div class=\"order-row-actions\"><button class=\"order-move\" type=\"button\" data-direction=\"up\" aria-label=\"Move " + escapeHtml(owner.owner) + " up\">Up</button><button class=\"order-move\" type=\"button\" data-direction=\"down\" aria-label=\"Move " + escapeHtml(owner.owner) + " down\">Down</button></div>";
     els.draftOrderList.append(row);
   }
   els.orderStatus.textContent = hasDraftOrder() ? "Order set" : "Set order first";
@@ -391,12 +425,86 @@ function renderDraftOrder() {
 }
 
 function saveDraftOrderFromForm() {
-  const ids = Array.from(els.draftOrderList.querySelectorAll("select")).map((select) => select.value);
+  const ids = Array.from(els.draftOrderList.querySelectorAll(".order-row")).map((row) => row.dataset.ownerId);
   if (new Set(ids).size !== state.owners.length) return alert("Each owner can only appear once in the draft order.");
   if (state.picks.length && !confirm("Changing the order after picks exist can make the board confusing. Save it anyway?")) return;
   state.draftOrder = ids;
   saveState();
   render();
+}
+
+function refreshDraftOrderSlots() {
+  Array.from(els.draftOrderList.querySelectorAll(".order-row")).forEach((row, index) => {
+    row.querySelector(".order-slot").textContent = index + 1;
+  });
+}
+
+function moveDraftOrderRow(row, direction) {
+  if (!row) return;
+  if (direction === "up" && row.previousElementSibling) {
+    els.draftOrderList.insertBefore(row, row.previousElementSibling);
+  }
+  if (direction === "down" && row.nextElementSibling) {
+    els.draftOrderList.insertBefore(row.nextElementSibling, row);
+  }
+  refreshDraftOrderSlots();
+}
+
+function rowAfterDragPointer(container, y) {
+  const rows = Array.from(container.querySelectorAll(".order-row:not(.is-dragging)"));
+  return rows.reduce((closest, row) => {
+    const box = row.getBoundingClientRect();
+    const offset = y - box.top - box.height / 2;
+    if (offset < 0 && offset > closest.offset) return { offset, row };
+    return closest;
+  }, { offset: Number.NEGATIVE_INFINITY, row: null }).row;
+}
+
+function ownerFromValue(value) {
+  const ownerKey = key(value);
+  if (!ownerKey) return null;
+  return state.owners.find((owner) => [owner.id, owner.owner, owner.team].some((item) => key(item) === ownerKey)) || null;
+}
+
+function keeperValuesFromRecord(record) {
+  const wideValues = [
+    readColumn(record, ["1"]),
+    readColumn(record, ["keeper1", "keeper 1", "keeper_1", "player1", "player 1", "player_1"]),
+    readColumn(record, ["2"]),
+    readColumn(record, ["keeper2", "keeper 2", "keeper_2", "player2", "player 2", "player_2"]),
+    readColumn(record, ["3"]),
+    readColumn(record, ["keeper3", "keeper 3", "keeper_3", "player3", "player 3", "player_3"])
+  ].map(normalize).filter(Boolean);
+  const singleValue = normalize(readColumn(record, ["keeper", "player", "player name", "name"]));
+  return wideValues.length ? wideValues : (singleValue ? [singleValue] : []);
+}
+
+function importKeepers(text, options = {}) {
+  const keepers = normalizeKeepers({});
+  let imported = 0;
+
+  for (const record of csvRecords(text)) {
+    const owner = ownerFromValue(readColumn(record, ["", "owner", "owner name", "team", "manager", "name"]));
+    if (!owner) continue;
+    const values = keeperValuesFromRecord(record);
+    if (!values.length) continue;
+
+    const existing = keepers[owner.id].filter(Boolean);
+    keepers[owner.id] = existing.concat(values).slice(0, 3);
+    imported += values.length;
+  }
+
+  if (!imported) {
+    if (!options.silent) alert("No keepers were imported. Use columns like owner, keeper1, keeper2, keeper3 or owner, player.");
+    return 0;
+  }
+  state.keepers = keepers;
+  saveState();
+  if (!options.silent) {
+    render();
+    alert("Imported " + imported + " keeper" + (imported === 1 ? "" : "s") + ".");
+  }
+  return imported;
 }
 
 function renderKeepers() {
@@ -459,6 +567,81 @@ function renderTrades() {
   });
 }
 
+function normalizeTradeType(value) {
+  const tradeType = key(value);
+  if (["transfer", "one-way", "one way", "move"].includes(tradeType)) return "transfer";
+  return "swap";
+}
+
+function tradeFromRecord(record) {
+  const type = normalizeTradeType(readColumn(record, ["type", "trade type", "kind"]));
+  const fromOwner = ownerFromValue(readColumn(record, ["from_owner", "from owner", "giving_owner", "giving owner", "from", "owner", "giving"]));
+  const toOwner = ownerFromValue(readColumn(record, ["to_owner", "to owner", "receiving_owner", "receiving owner", "to", "recipient", "receiving"]));
+  const fromRound = toNumber(readColumn(record, ["from_round", "from round", "giving_round", "giving round", "round", "giving pick", "from pick"]));
+  const toRound = toNumber(readColumn(record, ["to_round", "to round", "receiving_round", "receiving round", "receiving pick", "to pick"]));
+
+  if (!fromOwner || !toOwner || fromOwner.id === toOwner.id || !fromRound || (type === "swap" && !toRound)) return null;
+  return { id: crypto.randomUUID(), type, fromOwnerId: fromOwner.id, fromRound, toOwnerId: toOwner.id, toRound: type === "swap" ? toRound : null };
+}
+
+function tradeKey(trade) {
+  return [trade.type, trade.fromOwnerId, trade.fromRound, trade.toOwnerId, trade.toRound || ""].join("|");
+}
+
+function dedupeTrades(trades) {
+  const seen = new Set();
+  return trades.filter((trade) => {
+    const id = tradeKey(trade);
+    if (seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
+}
+
+function tradeMatrixRecords(text, options = {}) {
+  const rows = parseCsv(text);
+  const headers = (rows.shift() || []).map((header) => normalize(header));
+  const roundColumns = headers.map((header, index) => ({ index, round: toNumber(header) })).filter((item) => item.round > 0);
+  if (!roundColumns.length) return [];
+
+  const trades = [];
+  for (const row of rows) {
+    const receivingOwner = ownerFromValue(row[0]);
+    if (!receivingOwner) continue;
+
+    for (const column of roundColumns) {
+      const owners = normalize(row[column.index]).split(",").map((item) => ownerFromValue(item)).filter(Boolean);
+      for (const originalOwner of owners) {
+        if (originalOwner.id === receivingOwner.id) continue;
+        trades.push({ id: crypto.randomUUID(), type: "transfer", fromOwnerId: originalOwner.id, fromRound: column.round, toOwnerId: receivingOwner.id, toRound: null, source: options.source || null });
+      }
+    }
+  }
+
+  return trades;
+}
+
+function importTrades(text, options = {}) {
+  if (!options.silent && state.picks.length && !confirm("Importing trades after picks exist can make the board confusing. Import them anyway?")) return 0;
+
+  const source = options.source || null;
+  const transactionTrades = csvRecords(text).map(tradeFromRecord).filter(Boolean).map((trade) => ({ ...trade, source }));
+  const trades = transactionTrades.length ? transactionTrades : tradeMatrixRecords(text, { source });
+  if (!trades.length) {
+    if (!options.silent) alert("No trades were imported. Use a pick matrix like your trades.csv or columns like type, from_owner, from_round, to_owner, to_round.");
+    return 0;
+  }
+
+  const existing = options.replaceSource ? state.pickTrades.filter((trade) => trade.source !== source) : state.pickTrades;
+  state.pickTrades = dedupeTrades(trades.concat(existing));
+  saveState();
+  if (!options.silent) {
+    render();
+    alert("Imported " + trades.length + " trade" + (trades.length === 1 ? "" : "s") + ".");
+  }
+  return trades.length;
+}
+
 function addTradeFromForm() {
   const type = els.tradeType.value;
   const fromOwnerId = els.tradeFromOwner.value;
@@ -497,9 +680,9 @@ function renderBoard() {
     const originalOwner = ownerById(slot.originalOwnerId);
     const player = keeper || (pick ? byId.get(pick.playerId) : null);
     const card = document.createElement("article");
-    card.className = "pick-card" + (player ? "" : " empty") + (keeper ? " keeper" : "") + (slot.traded ? " traded" : "") + (slot.compensation ? " compensation" : "");
+    card.className = "pick-card" + (player || slot.skipped ? "" : " empty") + (keeper ? " keeper" : "") + (slot.traded ? " traded" : "") + (slot.compensation ? " compensation" : "") + (slot.skipped ? " skipped" : "");
     const ownerLine = slot.traded ? escapeHtml(owner.team) + " <span>from " + escapeHtml(originalOwner.team) + "</span>" : escapeHtml(owner.team);
-    card.innerHTML = "<div class=\"pick-meta\"><span>" + escapeHtml(slot.roundLabel) + "</span><span>Pick " + (i + 1) + "</span></div><div class=\"pick-player\">" + escapeHtml(player ? player.player : "Available") + "</div><div class=\"pick-owner\">" + ownerLine + "</div>";
+    card.innerHTML = "<div class=\"pick-meta\"><span>" + escapeHtml(slot.roundLabel) + "</span><span>Pick " + (i + 1) + "</span></div><div class=\"pick-player\">" + escapeHtml(slot.skipped ? "Roster Full" : (player ? player.player : "Available")) + "</div><div class=\"pick-owner\">" + ownerLine + "</div>";
     els.draftBoard.append(card);
   }
 }
@@ -508,8 +691,8 @@ function pickCardHtml(slot, index, pick, keeper, player, compact = false) {
   const owner = pick ? ownerById(pick.ownerId) : ownerById(slot.ownerId);
   const originalOwner = ownerById(slot.originalOwnerId);
   const ownerLine = slot.traded ? escapeHtml(owner.team) + " <span>from " + escapeHtml(originalOwner.team) + "</span>" : escapeHtml(owner.team);
-  const playerName = player ? player.player : "Available";
-  return "<div class=\"pick-meta\"><span>" + escapeHtml(slot.roundLabel) + "</span><span>Pick " + (index + 1) + "</span></div><div class=\"pick-player\">" + escapeHtml(playerName) + "</div><div class=\"pick-owner\">" + ownerLine + "</div>" + (compact && !player ? "<div class=\"pick-owner\">On deck slot</div>" : "");
+  const playerName = slot.skipped ? "Roster Full" : (player ? player.player : "Available");
+  return "<div class=\"pick-meta\"><span>" + escapeHtml(slot.roundLabel) + "</span><span>Pick " + (index + 1) + "</span></div><div class=\"pick-player\">" + escapeHtml(playerName) + "</div><div class=\"pick-owner\">" + ownerLine + "</div>";
 }
 
 function renderOwnerDraftBoard(ownerId) {
@@ -517,21 +700,65 @@ function renderOwnerDraftBoard(ownerId) {
   const schedule = computePickSchedule();
   const picks = draftedPickMap();
   const nextIndex = nextOpenScheduleIndex();
-  const start = Math.max(0, nextIndex - 6);
-  const end = Math.min(schedule.length, Math.max(nextIndex + 18, 24));
+  const rounds = new Map();
   els.ownerDraftBoard.innerHTML = "";
   els.ownerBoardCount.textContent = (state.picks.length + allKeeperPlayers().length) + " filled";
 
-  for (let i = start; i < end; i += 1) {
+  for (let i = 0; i < schedule.length; i += 1) {
     const slot = schedule[i];
-    const pick = picks.get(i);
-    const keeper = keeperForScheduleIndex(schedule, i);
-    const player = keeper || (pick ? byId.get(pick.playerId) : null);
-    const card = document.createElement("article");
-    card.className = "pick-card owner-board-card" + (player ? "" : " empty") + (keeper ? " keeper" : "") + (slot.traded ? " traded" : "") + (slot.compensation ? " compensation" : "") + (i === nextIndex ? " on-clock-card" : "") + (slot.ownerId === ownerId ? " my-pick-card" : "");
-    card.innerHTML = pickCardHtml(slot, i, pick, keeper, player, true);
-    els.ownerDraftBoard.append(card);
+    if (!rounds.has(slot.roundLabel)) rounds.set(slot.roundLabel, []);
+    rounds.get(slot.roundLabel).push({ slot, index: i });
   }
+
+  for (const [roundLabel, slots] of rounds) {
+    const row = document.createElement("section");
+    row.className = "owner-board-round";
+    row.innerHTML = "<div class=\"owner-board-round-title\"><strong>" + escapeHtml(roundLabel) + "</strong><span>" + slots.length + " picks</span></div><div class=\"owner-board-round-picks\"></div>";
+    const picksWrap = row.querySelector(".owner-board-round-picks");
+
+    for (const { slot, index } of slots) {
+      const pick = picks.get(index);
+      const keeper = keeperForScheduleIndex(schedule, index);
+      const player = keeper || (pick ? byId.get(pick.playerId) : null);
+      const card = document.createElement("article");
+      card.className = "pick-card owner-board-card" + (player || slot.skipped ? "" : " empty") + (keeper ? " keeper" : "") + (slot.traded ? " traded" : "") + (slot.compensation ? " compensation" : "") + (slot.skipped ? " skipped" : "") + (index === nextIndex ? " on-clock-card" : "") + (slot.ownerId === ownerId ? " my-pick-card" : "");
+      card.innerHTML = pickCardHtml(slot, index, pick, keeper, player, true);
+      picksWrap.append(card);
+    }
+
+    els.ownerDraftBoard.append(row);
+  }
+}
+
+function setOwnerTab(tab) {
+  activeOwnerTab = ["board", "pool", "roster"].includes(tab) ? tab : "board";
+  document.querySelectorAll(".owner-tab").forEach((button) => {
+    const active = button.dataset.ownerTab === activeOwnerTab;
+    button.classList.toggle("is-active", active);
+    button.setAttribute("aria-selected", active ? "true" : "false");
+  });
+  document.querySelectorAll(".owner-tab-panel").forEach((panel) => {
+    panel.hidden = panel.dataset.ownerPanel !== activeOwnerTab;
+  });
+}
+
+function statText(player, stat, digits = 1) {
+  const value = Number(player[stat]) || 0;
+  return value.toFixed(digits);
+}
+
+function renderOwnerRoster(defaultOwnerId) {
+  const selectedOwnerId = state.owners.some((owner) => owner.id === ownerRosterViewId) ? ownerRosterViewId : defaultOwnerId;
+  ownerRosterViewId = selectedOwnerId;
+  const rosterOwner = ownerById(selectedOwnerId);
+  const roster = rosterOwner ? teamPlayers(rosterOwner.id) : [];
+  els.ownerRosterSelect.innerHTML = ownerOptions(selectedOwnerId);
+  els.ownerRosterSelect.value = selectedOwnerId;
+  els.ownerRosterCount.textContent = roster.length + " player" + (roster.length === 1 ? "" : "s");
+  els.ownerRosterBody.innerHTML = roster.length ? roster.map((player) => {
+    const pickLabel = player.keeper ? "K" : (player.pickIndex == null ? "-" : "Pick " + (player.pickIndex + 1));
+    return "<tr><td>" + pickLabel + "</td><td>" + escapeHtml(player.player) + (player.keeper ? " <strong>(K)</strong>" : "") + "</td><td>" + escapeHtml(player.pos) + "</td><td>" + escapeHtml(player.team) + "</td><td>" + statText(player, "pts") + "</td><td>" + statText(player, "ast") + "</td><td>" + statText(player, "stl") + "</td><td>" + statText(player, "reb") + "</td><td>" + statText(player, "blk") + "</td><td>" + statText(player, "to") + "</td><td>" + statText(player, "fg_pct", 3) + "</td><td>" + statText(player, "ft_pct", 3) + "</td><td>" + statText(player, "threepm") + "</td></tr>";
+  }).join("") : "<tr><td class=\"empty-state\" colspan=\"13\">No players drafted yet.</td></tr>";
 }
 
 function renderDashboard() {
@@ -544,7 +771,7 @@ function renderDashboard() {
   }, { pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, to: 0, fg_pct: 0, ft_pct: 0, threepm: 0 });
   const playerCount = Math.max(roster.length, 1);
   const metrics = [["Players", roster.length], ["Keepers", roster.filter((player) => player.keeper).length], ["PTS", totals.pts.toFixed(1)], ["AST", totals.ast.toFixed(1)], ["STL", totals.stl.toFixed(1)], ["REB", totals.reb.toFixed(1)], ["BLK", totals.blk.toFixed(1)], ["TO", totals.to.toFixed(1)], ["FG%", (totals.fg_pct / playerCount).toFixed(3)], ["FT%", (totals.ft_pct / playerCount).toFixed(3)], ["3PM", totals.threepm.toFixed(1)]];
-  els.teamSummary.innerHTML = metrics.map(([label, value]) => "<div class=\"metric\"><span>" + label + "</span><strong>" + value + "</strong></div>").join("");
+  els.teamSummary.innerHTML = metrics.map(([label, value]) => "<div class=\"metric\"><span>" + label + "</span><strong>" + value + "</strong></div>").join("") + "<div class=\"position-summary\"><span>Positions</span><div>" + positionSummaryHtml(roster) + "</div></div>";
   els.teamRoster.innerHTML = roster.length ? roster.map((player) => "<tr><td>" + escapeHtml(player.player) + (player.keeper ? " <strong>(K)</strong>" : "") + "</td><td>" + escapeHtml(player.pos) + "</td><td>" + escapeHtml(player.team) + "</td><td>" + (player.rank || "") + "</td></tr>").join("") : "<tr><td class=\"empty-state\" colspan=\"4\">No players drafted yet.</td></tr>";
 }
 
@@ -558,26 +785,23 @@ function renderPlayers() {
 function ownerFromUrl() {
   const params = new URLSearchParams(window.location.search);
   const team = key(params.get("team"));
-  const requestedOwner = team ? state.owners.find((owner) => key(owner.owner) === team || key(owner.id) === team) : null;
-  const lockedOwnerId = localStorage.getItem(OWNER_LOCK_KEY);
-  const lockedOwner = lockedOwnerId ? ownerById(lockedOwnerId) : null;
-
-  if (lockedOwnerId && lockedOwner && (!requestedOwner || requestedOwner.id !== lockedOwnerId)) {
-    window.history.replaceState({}, "", "?team=" + encodeURIComponent(lockedOwner.owner));
-    return lockedOwner;
-  }
-
-  return requestedOwner;
-}
-
-function ownerPageIsClaimed(ownerId) {
-  return localStorage.getItem(OWNER_LOCK_KEY) === ownerId;
-}
-
-function requestedOwnerFromUrl() {
-  const params = new URLSearchParams(window.location.search);
-  const team = key(params.get("team"));
   return team ? state.owners.find((owner) => key(owner.owner) === team || key(owner.id) === team) || null : null;
+}
+
+function ownerHasAdminPowers(owner) {
+  return owner && key(owner.owner) === key(ADMIN_OWNER_NAME);
+}
+
+function goToDraftRoom() {
+  window.history.pushState({}, "", window.location.pathname);
+  render();
+}
+
+function resetDraftPicks() {
+  if (!confirm("Clear drafted picks? Imported players, owners, draft order, trades, and keepers will stay.")) return;
+  state.picks = [];
+  saveState();
+  render();
 }
 
 function setOwnerPage(ownerId) {
@@ -610,20 +834,12 @@ function renderOwnerPage() {
   document.body.classList.toggle("owner-page", Boolean(owner));
   if (!owner) return;
 
-  const claimed = ownerPageIsClaimed(owner.id);
   state.selectedOwnerId = owner.id;
-  els.ownerClaimPanel.hidden = claimed;
-  els.ownerClaimName.textContent = "Confirm " + owner.owner + " page";
-  els.ownerPageSummary.hidden = !claimed;
-  els.ownerClockPanel.hidden = !claimed;
-  document.querySelector(".owner-board-wrap").hidden = !claimed;
-  document.querySelector(".owner-filters").hidden = !claimed;
-  document.querySelector("#owner-page-panel .table-wrap").hidden = !claimed;
-  if (!claimed) {
-    els.ownerPageTitle.textContent = owner.owner + " Draft Page";
-    els.ownerPageCount.textContent = "Confirm first";
-    return;
-  }
+  if (!ownerRosterViewId) ownerRosterViewId = owner.id;
+  els.ownerAdminPanel.hidden = !ownerHasAdminPowers(owner);
+  els.ownerPageSummary.hidden = false;
+  els.ownerClockPanel.hidden = false;
+  document.querySelector(".owner-tab-shell").hidden = false;
 
   const roster = teamPlayers(owner.id);
   const flags = flagSet(owner.id);
@@ -633,7 +849,7 @@ function renderOwnerPage() {
   const search = key(els.ownerPlayerSearch.value);
   const flagFilter = els.ownerFlagFilter.value;
   const sort = els.ownerSort.value || "rank";
-  let players = availablePlayers().filter((player) => {
+  let players = availablePlayers({ search: "", position: "" }).filter((player) => {
     if (flagFilter === "flagged" && !flags.has(player.id)) return false;
     if (!search) return true;
     return [player.player, player.team, player.pos].some((value) => key(value).includes(search));
@@ -645,28 +861,46 @@ function renderOwnerPage() {
 
   els.ownerPageTitle.textContent = owner.owner + " Draft Page";
   els.ownerPageCount.textContent = players.length + " available";
-  els.ownerPageSummary.innerHTML = [["Roster", roster.length], ["Keepers", roster.filter((player) => player.keeper).length], ["Flags", flags.size], ["On Clock", currentPick ? ownerName(currentPick.ownerId) : "Done"], ["Your Next", onClock ? "Now" : (nextMine ? "Pick " + nextMine.pick : "-")]]
-    .map(([label, value]) => "<div class=\"metric\"><span>" + label + "</span><strong>" + value + "</strong></div>").join("");
+  els.ownerPageSummary.innerHTML = [["Roster", roster.length], ["Keepers", roster.filter((player) => player.keeper).length], ["On Clock", currentPick ? ownerName(currentPick.ownerId) : "Done"], ["Your Next", onClock ? "Now" : (nextMine ? "Pick " + nextMine.pick : "-")]]
+    .map(([label, value]) => "<div class=\"metric\"><span>" + label + "</span><strong>" + value + "</strong></div>").join("") + "<div class=\"position-summary\"><span>Positions</span><div>" + positionSummaryHtml(roster) + "</div></div>";
   els.ownerClockPanel.className = "owner-clock-panel" + (onClock ? " is-on-clock" : "");
   els.ownerClockPanel.innerHTML = currentPick
-    ? "<strong>" + (onClock ? "You are on the clock" : ownerName(currentPick.ownerId) + " is on the clock") + "</strong><span>" + escapeHtml(currentPick.roundLabel) + " · Pick " + currentPick.pick + (nextMine && !onClock ? " · Your next pick is " + nextMine.pick : "") + "</span>"
+    ? "<strong>" + (onClock ? "You are on the clock" : ownerName(currentPick.ownerId) + " is on the clock") + "</strong><span>" + escapeHtml(currentPick.roundLabel) + " - Pick " + currentPick.pick + (nextMine && !onClock ? " - Your next pick is " + nextMine.pick : "") + "</span>"
     : "<strong>Draft complete</strong><span>No open pick slots remain.</span>";
   renderOwnerDraftBoard(owner.id);
+  renderOwnerRoster(owner.id);
   els.ownerPlayerBody.innerHTML = players.length ? players.slice(0, 500).map((player) => {
     const flagged = flags.has(player.id);
-    return "<tr><td><button class=\"draft-player-button\" type=\"button\" data-player-name=\"" + escapeHtml(player.player) + "\"" + (onClock ? "" : " disabled") + ">Draft</button></td><td><button class=\"flag-button" + (flagged ? " flagged" : "") + "\" type=\"button\" data-player-id=\"" + escapeHtml(player.id) + "\">" + (flagged ? "★" : "☆") + "</button></td><td>" + (player.rank || "") + "</td><td>" + escapeHtml(player.player) + "</td><td>" + escapeHtml(player.pos) + "</td><td>" + escapeHtml(player.team) + "</td><td>" + player.pts.toFixed(1) + "</td><td>" + player.ast.toFixed(1) + "</td><td>" + player.stl.toFixed(1) + "</td><td>" + player.reb.toFixed(1) + "</td><td>" + player.blk.toFixed(1) + "</td><td>" + player.to.toFixed(1) + "</td><td>" + player.fg_pct.toFixed(3) + "</td><td>" + player.ft_pct.toFixed(3) + "</td><td>" + player.threepm.toFixed(1) + "</td></tr>";
+    return "<tr><td><button class=\"draft-player-button\" type=\"button\" data-player-name=\"" + escapeHtml(player.player) + "\"" + (onClock ? "" : " disabled") + ">Draft</button></td><td><button class=\"flag-button" + (flagged ? " flagged" : "") + "\" type=\"button\" data-player-id=\"" + escapeHtml(player.id) + "\">" + (flagged ? "*" : "+") + "</button></td><td>" + (player.rank || "") + "</td><td>" + escapeHtml(player.player) + "</td><td>" + escapeHtml(player.pos) + "</td><td>" + escapeHtml(player.team) + "</td><td>" + player.pts.toFixed(1) + "</td><td>" + player.ast.toFixed(1) + "</td><td>" + player.stl.toFixed(1) + "</td><td>" + player.reb.toFixed(1) + "</td><td>" + player.blk.toFixed(1) + "</td><td>" + player.to.toFixed(1) + "</td><td>" + player.fg_pct.toFixed(3) + "</td><td>" + player.ft_pct.toFixed(3) + "</td><td>" + player.threepm.toFixed(1) + "</td></tr>";
   }).join("") : "<tr><td class=\"empty-state\" colspan=\"15\">No available players match this view.</td></tr>";
+  setOwnerTab(activeOwnerTab);
 }
 
-async function loadDefaultPlayers() {
+async function loadDefaultCsv() {
+  const cacheBust = "?v=" + Date.now();
+
   try {
-    const response = await fetch("players.csv?v=" + Date.now());
-    if (!response.ok) return;
-    importPlayers(await response.text(), { silent: true });
-    render();
+    const response = await fetch("players.csv" + cacheBust);
+    if (response.ok) importPlayers(await response.text(), { silent: true });
   } catch (error) {
-    render();
+    // Local file mode or missing CSV: keep whatever is already saved.
   }
+
+  try {
+    const response = await fetch("keepers.csv" + cacheBust);
+    if (response.ok) importKeepers(await response.text(), { silent: true });
+  } catch (error) {
+    // Keepers are optional during early setup.
+  }
+
+  try {
+    const response = await fetch("trades.csv" + cacheBust);
+    if (response.ok) importTrades(await response.text(), { silent: true, source: "default-csv", replaceSource: true });
+  } catch (error) {
+    // Trades are optional and can still be added manually.
+  }
+
+  render();
 }
 function render() {
   state.owners = defaultOwners;
@@ -687,6 +921,8 @@ function render() {
 }
 
 els.csvInput.addEventListener("change", async (event) => { const file = event.target.files[0]; if (!file) return; importPlayers(await file.text()); event.target.value = ""; });
+els.keepersInput.addEventListener("change", async (event) => { const file = event.target.files[0]; if (!file) return; importKeepers(await file.text()); event.target.value = ""; });
+els.tradesInput.addEventListener("change", async (event) => { const file = event.target.files[0]; if (!file) return; importTrades(await file.text()); event.target.value = ""; });
 els.stateInput.addEventListener("change", async (event) => { const file = event.target.files[0]; if (!file) return; Object.assign(state, JSON.parse(await file.text())); state.owners = defaultOwners; state.pickTrades = state.pickTrades || []; state.keepers = normalizeKeepers(state.keepers || {}); state.draftStarted = Boolean(state.draftStarted); saveState(); render(); event.target.value = ""; });
 els.exportState.addEventListener("click", () => {
   const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
@@ -697,8 +933,34 @@ els.exportState.addEventListener("click", () => {
   link.click();
   URL.revokeObjectURL(url);
 });
-els.resetDraft.addEventListener("click", () => { if (!confirm("Clear drafted picks? Imported players, owners, draft order, trades, and keepers will stay.")) return; state.picks = []; saveState(); render(); });
+els.resetDraft.addEventListener("click", resetDraftPicks);
 els.saveOrder.addEventListener("click", saveDraftOrderFromForm);
+els.draftOrderList.addEventListener("dragstart", (event) => {
+  const row = event.target.closest(".order-row");
+  if (!row) return;
+  row.classList.add("is-dragging");
+  event.dataTransfer.effectAllowed = "move";
+  event.dataTransfer.setData("text/plain", row.dataset.ownerId);
+});
+els.draftOrderList.addEventListener("dragover", (event) => {
+  event.preventDefault();
+  const dragging = els.draftOrderList.querySelector(".order-row.is-dragging");
+  if (!dragging) return;
+  const after = rowAfterDragPointer(els.draftOrderList, event.clientY);
+  if (after) els.draftOrderList.insertBefore(dragging, after);
+  else els.draftOrderList.append(dragging);
+  refreshDraftOrderSlots();
+});
+els.draftOrderList.addEventListener("dragend", () => {
+  const dragging = els.draftOrderList.querySelector(".order-row.is-dragging");
+  if (dragging) dragging.classList.remove("is-dragging");
+  refreshDraftOrderSlots();
+});
+els.draftOrderList.addEventListener("click", (event) => {
+  const button = event.target.closest(".order-move");
+  if (!button) return;
+  moveDraftOrderRow(button.closest(".order-row"), button.dataset.direction);
+});
 els.startDraft.addEventListener("click", () => { if (!hasDraftOrder()) return alert("Set the draft order first."); state.draftStarted = true; saveState(); render(); });
 els.editSetup.addEventListener("click", () => { state.draftStarted = false; saveState(); render(); });
 els.addTrade.addEventListener("click", addTradeFromForm);
@@ -706,24 +968,38 @@ els.tradeType.addEventListener("change", renderTradeControls);
 els.roundsInput.addEventListener("input", () => { state.rounds = Math.max(1, Number(els.roundsInput.value) || 1); saveState(); render(); });
 els.timerInput.addEventListener("input", () => { state.timerLabel = els.timerInput.value; saveState(); });
 els.ownerSelect.addEventListener("change", () => { state.selectedOwnerId = els.ownerSelect.value; saveState(); renderDashboard(); });
+els.ownerTabs.addEventListener("click", (event) => {
+  const tab = event.target.closest(".owner-tab");
+  if (!tab) return;
+  setOwnerTab(tab.dataset.ownerTab);
+});
 els.ownerPlayerSearch.addEventListener("input", renderOwnerPage);
 els.ownerSort.addEventListener("change", renderOwnerPage);
 els.ownerFlagFilter.addEventListener("change", renderOwnerPage);
+els.ownerRosterSelect.addEventListener("change", () => {
+  ownerRosterViewId = els.ownerRosterSelect.value;
+  const owner = ownerFromUrl();
+  renderOwnerRoster(owner ? owner.id : ownerRosterViewId);
+});
 els.ownerPlayerBody.addEventListener("click", (event) => {
   const owner = ownerFromUrl();
   const flagButton = event.target.closest(".flag-button");
   if (flagButton && owner) toggleFlag(owner.id, flagButton.dataset.playerId);
   const draftButton = event.target.closest(".draft-player-button");
-  if (draftButton && owner) addPick(owner.id, draftButton.dataset.playerName);
+  if (draftButton && owner) {
+    activeOwnerTab = "roster";
+    addPick(owner.id, draftButton.dataset.playerName);
+  }
 });
-els.confirmOwnerPage.addEventListener("click", () => { const owner = requestedOwnerFromUrl(); if (!owner) return; localStorage.setItem(OWNER_LOCK_KEY, owner.id); render(); });
-els.cancelOwnerPage.addEventListener("click", () => { window.history.pushState({}, "", window.location.pathname); render(); });
+els.ownerHome.addEventListener("click", goToDraftRoom);
+els.ownerAdminHome.addEventListener("click", goToDraftRoom);
+els.ownerAdminReset.addEventListener("click", resetDraftPicks);
 window.addEventListener("popstate", render);
 els.pickForm.addEventListener("submit", (event) => { event.preventDefault(); addPick(els.pickOwner.value, els.pickPlayer.value); });
 els.searchInput.addEventListener("input", renderPlayers);
 els.positionFilter.addEventListener("change", renderPlayers);
 
-loadDefaultPlayers();
+loadDefaultCsv();
 
 
 

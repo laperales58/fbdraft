@@ -36,12 +36,21 @@
           <div class="section-title"><h2>Draft Order</h2><button id="save-order" type="button">Save Order</button></div>
           <div id="draft-order-list" class="draft-order-list"></div>
         </div>
-                <div class="keeper-panel">
-          <div class="section-title"><h2>Keepers</h2><span class="pill">Up to 3 each</span></div>
+        <div class="keeper-panel">
+          <div class="section-title">
+            <h2>Keepers</h2>
+            <label class="file-button secondary compact-file-button">Import Keepers<input id="keepers-input" type="file" accept=".csv,text/csv"></label>
+          </div>
           <div id="keeper-list" class="keeper-list"></div>
         </div>
         <div class="trade-panel">
-          <div class="section-title"><h2>Pick Trades</h2><button id="add-trade" type="button">Add Trade</button></div>
+          <div class="section-title">
+            <h2>Pick Trades</h2>
+            <div class="section-actions">
+              <label class="file-button secondary compact-file-button">Import Trades<input id="trades-input" type="file" accept=".csv,text/csv"></label>
+              <button id="add-trade" type="button">Add Trade</button>
+            </div>
+          </div>
           <div class="trade-form">
             <label>Type<select id="trade-type"><option value="swap">Swap picks</option><option value="transfer">Transfer pick</option></select></label>
             <label>Giving Owner<select id="trade-from-owner"></select></label>
@@ -82,43 +91,59 @@
           </div>
           <span class="pill">Private board</span>
         </div>
-        <div id="owner-claim-panel" class="owner-claim-panel">
-          <strong id="owner-claim-name">Confirm owner page</strong>
-          <span>This browser will be locked to this owner page after confirmation.</span>
-          <div class="claim-actions">
-            <button id="confirm-owner-page" type="button">This Is My Page</button>
-            <button id="cancel-owner-page" class="secondary" type="button">Go Back</button>
+        <div id="owner-admin-panel" class="owner-admin-panel" hidden>
+          <strong>Luis Admin</strong>
+          <div class="owner-admin-actions">
+            <button id="owner-admin-home" class="secondary" type="button">Draft Room</button>
+            <button id="owner-admin-reset" class="danger" type="button">Reset Draft</button>
           </div>
         </div>
         <div id="owner-page-summary" class="summary-grid"></div>
         <div id="owner-clock-panel" class="owner-clock-panel"></div>
-        <div class="owner-board-wrap">
-          <div class="section-title">
-            <h2>Live Board</h2>
-            <span id="owner-board-count" class="pill">0 picks</span>
+        <div class="owner-tab-shell">
+          <div id="owner-tabs" class="owner-tabs" role="tablist" aria-label="Owner page views">
+            <button class="owner-tab is-active" type="button" role="tab" aria-selected="true" data-owner-tab="board">Live Board</button>
+            <button class="owner-tab" type="button" role="tab" aria-selected="false" data-owner-tab="pool">Player Pool</button>
+            <button class="owner-tab" type="button" role="tab" aria-selected="false" data-owner-tab="roster">Roster</button>
           </div>
-          <div id="owner-draft-board" class="owner-draft-board"></div>
+          <div class="owner-tab-panel" data-owner-panel="board" role="tabpanel">
+            <div class="section-title">
+              <h2>Live Board</h2>
+              <span id="owner-board-count" class="pill">0 picks</span>
+            </div>
+            <div id="owner-draft-board" class="owner-draft-board"></div>
+          </div>
+          <div class="owner-tab-panel" data-owner-panel="pool" role="tabpanel" hidden>
+            <div class="filters owner-filters">
+              <input id="owner-player-search" type="search" placeholder="Search available players">
+              <select id="owner-sort">
+                <option value="rank">Sort by ADP</option>
+                <option value="pts">Sort by PTS</option>
+                <option value="ast">Sort by AST</option>
+                <option value="stl">Sort by STL</option>
+                <option value="reb">Sort by REB</option>
+                <option value="blk">Sort by BLK</option>
+                <option value="to">Sort by TO</option>
+                <option value="fg_pct">Sort by FG%</option>
+                <option value="ft_pct">Sort by FT%</option>
+                <option value="threepm">Sort by 3PM</option>
+              </select>
+              <select id="owner-flag-filter">
+                <option value="all">All available</option>
+                <option value="flagged">Flagged only</option>
+              </select>
+            </div>
+            <div class="table-wrap"><table><thead><tr><th>Draft</th><th>Flag</th><th>ADP</th><th>Player</th><th>Pos</th><th>Team</th><th>PTS</th><th>AST</th><th>STL</th><th>REB</th><th>BLK</th><th>TO</th><th>FG%</th><th>FT%</th><th>3PM</th></tr></thead><tbody id="owner-player-body"></tbody></table></div>
+          </div>
+          <div class="owner-tab-panel" data-owner-panel="roster" role="tabpanel" hidden>
+            <div class="section-title owner-roster-title">
+              <h2>Roster</h2>
+              <label class="dashboard-switch">Team<select id="owner-roster-select"></select></label>
+              <span id="owner-roster-count" class="pill">0 players</span>
+            </div>
+            <div class="table-wrap"><table><thead><tr><th>Pick</th><th>Player</th><th>Pos</th><th>Team</th><th>PTS</th><th>AST</th><th>STL</th><th>REB</th><th>BLK</th><th>TO</th><th>FG%</th><th>FT%</th><th>3PM</th></tr></thead><tbody id="owner-roster-body"></tbody></table></div>
+          </div>
         </div>
-        <div class="filters owner-filters">
-          <input id="owner-player-search" type="search" placeholder="Search available players">
-          <select id="owner-sort">
-            <option value="rank">Sort by ADP</option>
-            <option value="pts">Sort by PTS</option>
-            <option value="ast">Sort by AST</option>
-            <option value="stl">Sort by STL</option>
-            <option value="reb">Sort by REB</option>
-            <option value="blk">Sort by BLK</option>
-            <option value="to">Sort by TO</option>
-            <option value="fg_pct">Sort by FG%</option>
-            <option value="ft_pct">Sort by FT%</option>
-            <option value="threepm">Sort by 3PM</option>
-          </select>
-          <select id="owner-flag-filter">
-            <option value="all">All available</option>
-            <option value="flagged">Flagged only</option>
-          </select>
-        </div>
-        <div class="table-wrap"><table><thead><tr><th>Draft</th><th>Flag</th><th>ADP</th><th>Player</th><th>Pos</th><th>Team</th><th>PTS</th><th>AST</th><th>STL</th><th>REB</th><th>BLK</th><th>TO</th><th>FG%</th><th>FT%</th><th>3PM</th></tr></thead><tbody id="owner-player-body"></tbody></table></div>
       </section>
 
       <section class="panel players-panel" aria-labelledby="players-title">
