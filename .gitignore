@@ -7,3 +7,6 @@ node_modules/
 dist/
 build/
 *.xlsx
+data/draft-state.json
+data/draft-state.json.tmp
+data/backups/

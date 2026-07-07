@@ -3,6 +3,12 @@ const ADMIN_OWNER_NAME = "Luis";
 const OWNER_NAMES = ["Luis", "Daniel", "Theo", "Henry", "Reed", "Adolfo", "Ivan", "Clay", "Mario", "Frank", "Z", "Yoshi"];
 let activeOwnerTab = "board";
 let ownerRosterViewId = "";
+let serverSyncEnabled = false;
+let serverVersion = null;
+let suppressServerSync = false;
+let savingToServer = false;
+let queuedServerState = null;
+let conflictAlertShown = false;
 
 function makeOwner(name, index) {
   return { id: "owner-" + (index + 1), owner: name, team: name };
@@ -74,28 +80,36 @@ const els = {
   tradeList: document.querySelector("#trade-list")
 };
 
+function defaultState() {
+  return { owners: defaultOwners, rounds: 13, timerLabel: "Offline", selectedOwnerId: defaultOwners[0].id, draftOrder: [], pickTrades: [], keepers: normalizeKeepers({}), playerFlags: {}, draftStarted: false, players: [], picks: [] };
+}
+
+function normalizeState(raw) {
+  const parsed = raw && typeof raw === "object" ? raw : {};
+  parsed.owners = defaultOwners;
+  parsed.rounds = parsed.rounds || 13;
+  parsed.timerLabel = parsed.timerLabel || "Offline";
+  parsed.selectedOwnerId = parsed.selectedOwnerId && defaultOwners.some((owner) => owner.id === parsed.selectedOwnerId) ? parsed.selectedOwnerId : defaultOwners[0].id;
+  parsed.players = parsed.players || [];
+  parsed.playerFlags = parsed.playerFlags || {};
+  parsed.picks = parsed.picks || [];
+  parsed.pickTrades = parsed.pickTrades || [];
+  parsed.keepers = normalizeKeepers(parsed.keepers || {});
+  parsed.draftStarted = Boolean(parsed.draftStarted);
+  parsed.draftOrder = Array.isArray(parsed.draftOrder) ? parsed.draftOrder.filter((id) => defaultOwners.some((owner) => owner.id === id)) : [];
+  return parsed;
+}
+
 function loadState() {
   const stored = localStorage.getItem(STORAGE_KEY);
   if (stored) {
     try {
-      const parsed = JSON.parse(stored);
-      parsed.owners = defaultOwners;
-      parsed.rounds = parsed.rounds || 13;
-      parsed.timerLabel = parsed.timerLabel || "Offline";
-      parsed.selectedOwnerId = parsed.selectedOwnerId && defaultOwners.some((owner) => owner.id === parsed.selectedOwnerId) ? parsed.selectedOwnerId : defaultOwners[0].id;
-      parsed.players = parsed.players || [];
-      parsed.playerFlags = parsed.playerFlags || {};
-      parsed.picks = parsed.picks || [];
-      parsed.pickTrades = parsed.pickTrades || [];
-      parsed.keepers = normalizeKeepers(parsed.keepers || {});
-      parsed.draftStarted = Boolean(parsed.draftStarted);
-      parsed.draftOrder = Array.isArray(parsed.draftOrder) ? parsed.draftOrder.filter((id) => defaultOwners.some((owner) => owner.id === id)) : [];
-      return parsed;
+      return normalizeState(JSON.parse(stored));
     } catch (error) {
       localStorage.removeItem(STORAGE_KEY);
     }
   }
-  return { owners: defaultOwners, rounds: 13, timerLabel: "Offline", selectedOwnerId: defaultOwners[0].id, draftOrder: [], pickTrades: [], keepers: normalizeKeepers({}), playerFlags: {}, draftStarted: false, players: [], picks: [] };
+  return defaultState();
 }
 
 function normalizeKeepers(raw) {
@@ -107,7 +121,100 @@ function normalizeKeepers(raw) {
   return keepers;
 }
 
-function saveState() { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+function stateSnapshot() { return JSON.parse(JSON.stringify(state)); }
+function applyState(nextState) { Object.assign(state, normalizeState(nextState)); }
+
+function saveState(options = {}) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  if (!serverSyncEnabled || suppressServerSync || options.localOnly) return;
+  queuedServerState = stateSnapshot();
+  flushServerSave();
+}
+
+async function flushServerSave() {
+  if (savingToServer || !queuedServerState) return;
+  savingToServer = true;
+
+  while (queuedServerState && serverSyncEnabled) {
+    const snapshot = queuedServerState;
+    queuedServerState = null;
+
+    try {
+      const response = await fetch("/api/state", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ version: serverVersion, state: snapshot }),
+      });
+
+      const payload = await response.json();
+      if (response.status === 409) {
+        await handleSyncConflict(payload);
+        break;
+      }
+      if (!response.ok) throw new Error(payload.error || "Unable to save draft state.");
+
+      serverVersion = payload.version;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+    } catch (error) {
+      console.error(error);
+      serverSyncEnabled = false;
+      alert("Live sync stopped because the server could not save draft state. Export the state as a backup before continuing.");
+      break;
+    }
+  }
+
+  savingToServer = false;
+}
+
+async function handleSyncConflict(payload) {
+  serverVersion = payload.version;
+  if (payload.state) {
+    applyState(payload.state);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    render();
+  }
+  queuedServerState = null;
+  if (!conflictAlertShown) {
+    conflictAlertShown = true;
+    alert("Another draft room update landed first, so this page reloaded the latest shared state. Please retry your last action.");
+    setTimeout(() => { conflictAlertShown = false; }, 3000);
+  }
+}
+
+async function loadServerState() {
+  try {
+    const response = await fetch("/api/state", { cache: "no-store" });
+    if (!response.ok) return false;
+    const payload = await response.json();
+    serverSyncEnabled = true;
+    serverVersion = payload.version;
+    const hasServerState = Boolean(payload.state);
+    if (hasServerState) {
+      applyState(payload.state);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    }
+    return hasServerState;
+  } catch (error) {
+    return false;
+  }
+}
+
+async function pollServerState() {
+  if (!serverSyncEnabled || savingToServer || queuedServerState) return;
+  try {
+    const response = await fetch("/api/state", { cache: "no-store" });
+    if (!response.ok) return;
+    const payload = await response.json();
+    if (payload.state && payload.version !== serverVersion) {
+      serverVersion = payload.version;
+      applyState(payload.state);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      render();
+    }
+  } catch (error) {
+    // Temporary network blips should not interrupt the draft room.
+  }
+}
 function normalize(value) { return String(value == null ? "" : value).trim(); }
 function key(value) { return normalize(value).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase(); }
 function escapeHtml(value) { return normalize(value).replace(/[&<>"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;" }[char])); }
@@ -878,6 +985,7 @@ function renderOwnerPage() {
 
 async function loadDefaultCsv() {
   const cacheBust = "?v=" + Date.now();
+  suppressServerSync = true;
 
   try {
     const response = await fetch("players.csv" + cacheBust);
@@ -900,7 +1008,21 @@ async function loadDefaultCsv() {
     // Trades are optional and can still be added manually.
   }
 
+  suppressServerSync = false;
+  saveState();
   render();
+}
+
+async function initializeApp() {
+  const loadedServerState = await loadServerState();
+  if (loadedServerState && state.players.length) {
+    render();
+    setInterval(pollServerState, 2000);
+    return;
+  }
+  applyState(defaultState());
+  await loadDefaultCsv();
+  setInterval(pollServerState, 2000);
 }
 function render() {
   state.owners = defaultOwners;
@@ -999,7 +1121,7 @@ els.pickForm.addEventListener("submit", (event) => { event.preventDefault(); add
 els.searchInput.addEventListener("input", renderPlayers);
 els.positionFilter.addEventListener("change", renderPlayers);
 
-loadDefaultCsv();
+initializeApp();
 
 
 

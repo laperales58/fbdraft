@@ -1,6 +1,6 @@
 # Fantasy Basketball Draft Tool
 
-A local-first fantasy basketball draft website for an offline draft room.
+A synced fantasy basketball draft website for a live draft room.
 
 ## What it does now
 
@@ -10,14 +10,69 @@ A local-first fantasy basketball draft website for an offline draft room.
 - Shows a live draft board by round and pick.
 - Tracks available and drafted players.
 - Gives each owner a team dashboard with roster and category totals.
-- Saves everything in the browser automatically.
+- Saves draft state to the server with browser fallback.
+- Polls for live updates so multiple devices stay in sync.
+- Can save shared draft state to Neon/Postgres on Render.
 - Exports and imports draft state as JSON for offline sharing or backup.
 
 ## Quick start
 
-Open `index.html` in a browser. No install step is required for the current static version.
+Run the synced server:
 
-For draft day, put the folder on each laptop or host the folder from one machine on the local network. When served over HTTP, the app automatically loads `players.csv`, `keepers.csv`, and `trades.csv` from the project root at startup.
+```sh
+npm start
+```
+
+Then open `http://localhost:5173`.
+
+For draft day, host the server from one machine or deploy it to a host like Render. When served over HTTP, the app automatically loads `players.csv`, `keepers.csv`, and `trades.csv` from the project root at startup if no shared server state exists yet.
+
+## Render deploy
+
+This repo includes `render.yaml`, so Render can read the service settings automatically.
+
+1. Push the latest code to GitHub.
+2. In Render, create a new Blueprint or Web Service from `https://github.com/laperales58/fbdraft`.
+3. Use the included settings:
+   - Build command: `npm install`
+   - Start command: `npm start`
+   - Health check path: `/api/health`
+4. Add your Neon connection string as an environment variable:
+
+```sh
+DATABASE_URL=postgresql://...
+```
+
+5. Deploy, then open the Render URL and confirm `/api/health` returns `{"ok":true}`.
+
+## Live Sync Safety
+
+The server owns one shared draft state at `/api/state`. Every save includes a version number; if two people change the draft at the same time, the stale save is rejected instead of silently overwriting the newer save. Open pages poll every two seconds for updates from other devices.
+
+The server saves draft state in one of two places:
+
+- If `DATABASE_URL` is set, it stores the draft in Postgres. This is the best Render setup because it survives restarts without a paid Render persistent disk.
+- If `DATABASE_URL` is not set, it writes `data/draft-state.json` atomically and creates timestamped backups in `data/backups/`.
+
+For Render with Neon:
+
+1. Create a Neon Postgres database.
+2. Copy the pooled or regular connection string.
+3. In Render, add an environment variable:
+
+```sh
+DATABASE_URL=postgresql://...
+```
+
+4. Deploy normally with `npm start`.
+
+The server creates its `draft_state` table automatically the first time it starts. No Render persistent disk is needed when `DATABASE_URL` is set.
+
+For Render without Neon, attach a persistent disk and set:
+
+- `DATA_DIR=/var/data`
+
+Without a persistent disk or external database, Render restarts and redeploys can wipe local server files.
 
 ## Player CSV format
 
@@ -86,7 +141,6 @@ Importing trades appends to the current trade list, so live draft-night trades c
 
 ## Next likely upgrades
 
-- Local-network sync so all devices see picks instantly from one host machine.
 - Custom scoring presets.
 - Spreadsheet import helpers for the existing `25 FB_Draft_Sheet.xlsx` and `FB25 Helper.xlsx` logic.
 - Better roster slot rules by league format.
