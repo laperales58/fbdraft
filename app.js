@@ -3,6 +3,7 @@ const ADMIN_OWNER_NAME = "Luis";
 const OWNER_NAMES = ["Luis", "Daniel", "Theo", "Henry", "Reed", "Adolfo", "Ivan", "Clay", "Mario", "Frank", "Z", "Yoshi"];
 const ROUNDS = 13;
 let activeOwnerTab = "board";
+let activeSetupTab = "order";
 let ownerRosterViewId = "";
 let serverSyncEnabled = false;
 let serverVersion = null;
@@ -51,6 +52,7 @@ const els = {
   ownerPageSelect: document.querySelector("#owner-page-select"),
   ownerPageSummary: document.querySelector("#owner-page-summary"),
   ownerTabs: document.querySelector("#owner-tabs"),
+  setupTabs: document.querySelector("#setup-tabs"),
   ownerPlayerSearch: document.querySelector("#owner-player-search"),
   ownerSort: document.querySelector("#owner-sort"),
   ownerFlagFilter: document.querySelector("#owner-flag-filter"),
@@ -828,6 +830,18 @@ function setOwnerTab(tab) {
   });
 }
 
+function setSetupTab(tab) {
+  activeSetupTab = ["order", "keepers", "trades"].includes(tab) ? tab : "order";
+  document.querySelectorAll(".setup-tab").forEach((button) => {
+    const active = button.dataset.setupTab === activeSetupTab;
+    button.classList.toggle("is-active", active);
+    button.setAttribute("aria-selected", active ? "true" : "false");
+  });
+  document.querySelectorAll(".setup-tab-panel").forEach((panel) => {
+    panel.hidden = panel.dataset.setupPanel !== activeSetupTab;
+  });
+}
+
 function statText(player, stat, digits = 1) {
   const value = Number(player[stat]) || 0;
   return value.toFixed(digits);
@@ -1011,6 +1025,7 @@ function render() {
   renderDraftOrder();
   renderKeepers();
   renderTrades();
+  setSetupTab(activeSetupTab);
   renderSelects();
   renderBoard();
   renderDashboard();
@@ -1068,6 +1083,11 @@ els.ownerTabs.addEventListener("click", (event) => {
   const tab = event.target.closest(".owner-tab");
   if (!tab) return;
   setOwnerTab(tab.dataset.ownerTab);
+});
+els.setupTabs.addEventListener("click", (event) => {
+  const tab = event.target.closest(".setup-tab");
+  if (!tab) return;
+  setSetupTab(tab.dataset.setupTab);
 });
 els.ownerPlayerSearch.addEventListener("input", renderOwnerPage);
 els.ownerSort.addEventListener("change", renderOwnerPage);

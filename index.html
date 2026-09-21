@@ -29,38 +29,49 @@
         <div id="team-links" class="team-links"></div>
       </section>
 
-      <section class="panel draft-order-panel" aria-labelledby="order-title">
-        <div class="section-title">
-          <h2 id="order-title">Draft Order</h2>
-          <div class="section-actions"><span id="order-status" class="pill">Set order</span><button id="save-order" type="button">Save Order</button></div>
-        </div>
-        <div id="draft-order-list" class="draft-order-list"></div>
-      </section>
+      <section class="panel setup-tabs-panel" aria-labelledby="setup-tabs-title">
+        <h2 id="setup-tabs-title" class="visually-hidden">Draft Prep</h2>
+        <div class="setup-tab-shell">
+          <div id="setup-tabs" class="setup-tabs" role="tablist" aria-label="Draft prep views">
+            <button class="setup-tab is-active" type="button" role="tab" aria-selected="true" data-setup-tab="order">Draft Order</button>
+            <button class="setup-tab" type="button" role="tab" aria-selected="false" data-setup-tab="keepers">Keepers</button>
+            <button class="setup-tab" type="button" role="tab" aria-selected="false" data-setup-tab="trades">Trades</button>
+          </div>
 
-      <section class="panel keeper-panel" aria-labelledby="keepers-title">
-        <div class="section-title">
-          <h2 id="keepers-title">Keepers</h2>
-          <label class="file-button secondary compact-file-button">Import Keepers<input id="keepers-input" type="file" accept=".csv,text/csv"></label>
-        </div>
-        <div id="keeper-list" class="keeper-list"></div>
-      </section>
+          <div class="setup-tab-panel" data-setup-panel="order" role="tabpanel">
+            <div class="section-title">
+              <h2>Draft Order</h2>
+              <div class="section-actions"><span id="order-status" class="pill">Set order</span><button id="save-order" type="button">Save Order</button></div>
+            </div>
+            <div id="draft-order-list" class="draft-order-list"></div>
+          </div>
 
-      <section class="panel trade-panel" aria-labelledby="trades-title">
-        <div class="section-title">
-          <h2 id="trades-title">Pick Trades</h2>
-          <div class="section-actions">
-            <label class="file-button secondary compact-file-button">Import Trades<input id="trades-input" type="file" accept=".csv,text/csv"></label>
-            <button id="add-trade" type="button">Add Trade</button>
+          <div class="setup-tab-panel" data-setup-panel="keepers" role="tabpanel" hidden>
+            <div class="section-title">
+              <h2>Keepers</h2>
+              <label class="file-button secondary compact-file-button">Import Keepers<input id="keepers-input" type="file" accept=".csv,text/csv"></label>
+            </div>
+            <div id="keeper-list" class="keeper-list"></div>
+          </div>
+
+          <div class="setup-tab-panel" data-setup-panel="trades" role="tabpanel" hidden>
+            <div class="section-title">
+              <h2>Pick Trades</h2>
+              <div class="section-actions">
+                <label class="file-button secondary compact-file-button">Import Trades<input id="trades-input" type="file" accept=".csv,text/csv"></label>
+                <button id="add-trade" type="button">Add Trade</button>
+              </div>
+            </div>
+            <div class="trade-form">
+              <label>Type<select id="trade-type"><option value="swap">Swap picks</option><option value="transfer">Transfer pick</option></select></label>
+              <label>Giving Owner<select id="trade-from-owner"></select></label>
+              <label>Giving Round<input id="trade-from-round" type="number" min="1" max="13" value="4"></label>
+              <label>Receiving Owner<select id="trade-to-owner"></select></label>
+              <label id="trade-to-round-label">Receiving Round<input id="trade-to-round" type="number" min="1" max="13" value="10"></label>
+            </div>
+            <div id="trade-list" class="trade-list"></div>
           </div>
         </div>
-        <div class="trade-form">
-          <label>Type<select id="trade-type"><option value="swap">Swap picks</option><option value="transfer">Transfer pick</option></select></label>
-          <label>Giving Owner<select id="trade-from-owner"></select></label>
-          <label>Giving Round<input id="trade-from-round" type="number" min="1" max="13" value="4"></label>
-          <label>Receiving Owner<select id="trade-to-owner"></select></label>
-          <label id="trade-to-round-label">Receiving Round<input id="trade-to-round" type="number" min="1" max="13" value="10"></label>
-        </div>
-        <div id="trade-list" class="trade-list"></div>
       </section>
 
       <section class="panel pick-panel" aria-labelledby="pick-title">
