@@ -1,6 +1,7 @@
 const STORAGE_KEY = "fantasyBasketballDraftState.v1";
 const ADMIN_OWNER_NAME = "Luis";
 const OWNER_NAMES = ["Luis", "Daniel", "Theo", "Henry", "Reed", "Adolfo", "Ivan", "Clay", "Mario", "Frank", "Z", "Yoshi"];
+const ROUNDS = 13;
 let activeOwnerTab = "board";
 let ownerRosterViewId = "";
 let serverSyncEnabled = false;
@@ -25,15 +26,12 @@ const els = {
   ownerHome: document.querySelector("#owner-home"),
   editSetup: document.querySelector("#edit-setup"),
   startDraft: document.querySelector("#start-draft"),
-  ownersList: document.querySelector("#owners-list"),
   teamLinks: document.querySelector("#team-links"),
   ownerSelect: document.querySelector("#owner-select"),
   pickOwner: document.querySelector("#pick-owner"),
   pickPlayer: document.querySelector("#pick-player"),
   pickForm: document.querySelector("#pick-form"),
   availablePlayers: document.querySelector("#available-players"),
-  roundsInput: document.querySelector("#rounds-input"),
-  timerInput: document.querySelector("#timer-input"),
   nextPickLabel: document.querySelector("#next-pick-label"),
   draftCount: document.querySelector("#draft-count"),
   draftBoard: document.querySelector("#draft-board"),
@@ -63,7 +61,6 @@ const els = {
   ownerRosterSelect: document.querySelector("#owner-roster-select"),
   ownerRosterCount: document.querySelector("#owner-roster-count"),
   ownerRosterBody: document.querySelector("#owner-roster-body"),
-  ownerTemplate: document.querySelector("#owner-row-template"),
   orderStatus: document.querySelector("#order-status"),
   draftOrderList: document.querySelector("#draft-order-list"),
   saveOrder: document.querySelector("#save-order"),
@@ -81,14 +78,12 @@ const els = {
 };
 
 function defaultState() {
-  return { owners: defaultOwners, rounds: 13, timerLabel: "Offline", selectedOwnerId: defaultOwners[0].id, draftOrder: [], pickTrades: [], keepers: normalizeKeepers({}), playerFlags: {}, draftStarted: false, players: [], picks: [] };
+  return { owners: defaultOwners, selectedOwnerId: defaultOwners[0].id, draftOrder: [], pickTrades: [], keepers: normalizeKeepers({}), playerFlags: {}, draftStarted: false, players: [], picks: [] };
 }
 
 function normalizeState(raw) {
   const parsed = raw && typeof raw === "object" ? raw : {};
   parsed.owners = defaultOwners;
-  parsed.rounds = parsed.rounds || 13;
-  parsed.timerLabel = parsed.timerLabel || "Offline";
   parsed.selectedOwnerId = parsed.selectedOwnerId && defaultOwners.some((owner) => owner.id === parsed.selectedOwnerId) ? parsed.selectedOwnerId : defaultOwners[0].id;
   parsed.players = parsed.players || [];
   parsed.playerFlags = parsed.playerFlags || {};
@@ -332,22 +327,22 @@ function computePickSchedule() {
   const tradeMap = buildPickTradeMap();
   const schedule = [];
   const counts = Object.fromEntries(state.owners.map((owner) => [owner.id, 0]));
-  const baseCount = state.rounds * ownerCount;
+  const baseCount = ROUNDS * ownerCount;
 
   for (let index = 0; index < baseCount; index += 1) {
     const originalOwnerId = baseOwnerIdForPickIndex(index);
     const ownerId = tradeMap.get(index) || originalOwnerId;
-    const skipped = (counts[ownerId] || 0) >= state.rounds;
+    const skipped = (counts[ownerId] || 0) >= ROUNDS;
     if (!skipped) counts[ownerId] = (counts[ownerId] || 0) + 1;
     schedule.push({ index, pick: index + 1, round: Math.floor(index / ownerCount) + 1, roundLabel: "R" + (Math.floor(index / ownerCount) + 1), originalOwnerId, ownerId, traded: ownerId !== originalOwnerId, compensation: false, skipped });
   }
 
   let extraRound = 1;
-  while (state.owners.some((owner) => (counts[owner.id] || 0) < state.rounds)) {
+  while (state.owners.some((owner) => (counts[owner.id] || 0) < ROUNDS)) {
     for (const ownerId of orderedOwnerIds()) {
-      if ((counts[ownerId] || 0) < state.rounds) {
+      if ((counts[ownerId] || 0) < ROUNDS) {
         counts[ownerId] = (counts[ownerId] || 0) + 1;
-        schedule.push({ index: schedule.length, pick: schedule.length + 1, round: state.rounds + extraRound, roundLabel: "Extra " + extraRound, originalOwnerId: ownerId, ownerId, traded: false, compensation: true, skipped: false });
+        schedule.push({ index: schedule.length, pick: schedule.length + 1, round: ROUNDS + extraRound, roundLabel: "Extra " + extraRound, originalOwnerId: ownerId, ownerId, traded: false, compensation: true, skipped: false });
       }
     }
     extraRound += 1;
@@ -495,22 +490,6 @@ function addPick(ownerId, playerName) {
 
 function ownerOptions(selectedId) {
   return state.owners.map((owner) => "<option value=\"" + escapeHtml(owner.id) + "\"" + (owner.id === selectedId ? " selected" : "") + ">" + escapeHtml(owner.owner) + "</option>").join("");
-}
-
-function renderOwners() {
-  els.ownersList.innerHTML = "";
-  for (const owner of state.owners) {
-    const fragment = els.ownerTemplate.content.cloneNode(true);
-    const ownerInput = fragment.querySelector(".owner-name");
-    const teamInput = fragment.querySelector(".team-name");
-    const remove = fragment.querySelector(".remove-owner");
-    ownerInput.value = owner.owner;
-    teamInput.value = owner.team;
-    ownerInput.disabled = true;
-    teamInput.disabled = true;
-    remove.remove();
-    els.ownersList.append(fragment);
-  }
 }
 
 function renderDraftOrder() {
@@ -1028,9 +1007,6 @@ function render() {
   state.owners = defaultOwners;
   state.keepers = normalizeKeepers(state.keepers || {});
   document.body.classList.toggle("draft-started", Boolean(state.draftStarted));
-  els.roundsInput.value = state.rounds;
-  els.timerInput.value = state.timerLabel;
-  renderOwners();
   renderTeamLinks();
   renderDraftOrder();
   renderKeepers();
@@ -1087,8 +1063,6 @@ els.startDraft.addEventListener("click", () => { if (!hasDraftOrder()) return al
 els.editSetup.addEventListener("click", () => { state.draftStarted = false; saveState(); render(); });
 els.addTrade.addEventListener("click", addTradeFromForm);
 els.tradeType.addEventListener("change", renderTradeControls);
-els.roundsInput.addEventListener("input", () => { state.rounds = Math.max(1, Number(els.roundsInput.value) || 1); saveState(); render(); });
-els.timerInput.addEventListener("input", () => { state.timerLabel = els.timerInput.value; saveState(); });
 els.ownerSelect.addEventListener("change", () => { state.selectedOwnerId = els.ownerSelect.value; saveState(); renderDashboard(); });
 els.ownerTabs.addEventListener("click", (event) => {
   const tab = event.target.closest(".owner-tab");

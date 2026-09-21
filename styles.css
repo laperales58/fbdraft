@@ -28,16 +28,13 @@ h2 { font-size: 1.08rem; }
 .layout { width: min(1560px, 100%); margin: 0 auto; padding: 18px clamp(12px, 2vw, 28px) 36px; display: grid; grid-template-columns: minmax(260px, 0.8fr) minmax(340px, 1.2fr) minmax(360px, 1fr); grid-template-areas: "setup pick dashboard" "board board players"; gap: 16px; }
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); padding: 16px; min-width: 0; }
 .setup-panel { grid-area: setup; } .pick-panel { grid-area: pick; } .dashboard-panel { grid-area: dashboard; } .board-panel { grid-area: board; } .players-panel { grid-area: players; }
+.draft-order-panel, .keeper-panel, .trade-panel { display: none; }
 .section-title { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
 .section-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
 .pill { display: inline-flex; align-items: center; min-height: 28px; padding: 4px 10px; border-radius: 999px; background: #eef7f8; color: var(--accent-strong); font-size: 0.82rem; font-weight: 700; }
 label { display: grid; gap: 6px; color: var(--muted); font-size: 0.82rem; font-weight: 700; }
 input, select { width: 100%; min-height: 40px; border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; background: white; color: var(--ink); }
-.settings-grid, .pick-form, .filters { display: grid; gap: 12px; }
-.settings-grid { grid-template-columns: 1fr 1fr; }
-.settings-grid label:last-child { grid-column: 1 / -1; }
-.owners-list { display: grid; gap: 8px; margin-top: 14px; }
-.owner-row { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; }
+.pick-form, .filters { display: grid; gap: 12px; }
 .summary-grid { display: grid; grid-template-columns: repeat(4, minmax(74px, 1fr)); gap: 8px; margin-bottom: 12px; }
 .metric { border: 1px solid var(--line); border-radius: 6px; padding: 10px; background: #fffdf8; }
 .metric span { display: block; color: var(--muted); font-size: 0.72rem; font-weight: 800; text-transform: uppercase; }
@@ -62,8 +59,7 @@ td { font-size: 0.9rem; }
 tr:last-child td { border-bottom: 0; }
 .empty-state { color: var(--muted); padding: 18px 10px; }
 @media (max-width: 1100px) { .topbar { align-items: flex-start; flex-direction: column; } .actions { justify-content: flex-start; } .layout { grid-template-columns: 1fr 1fr; grid-template-areas: "setup pick" "dashboard dashboard" "board board" "players players"; } }
-@media (max-width: 720px) { .layout { grid-template-columns: 1fr; grid-template-areas: "setup" "pick" "dashboard" "players" "board"; } .panel { padding: 12px; } .owner-row, .settings-grid { grid-template-columns: 1fr; } .summary-grid { grid-template-columns: repeat(2, 1fr); } button, .file-button { width: 100%; } }
-.draft-order-panel { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+@media (max-width: 720px) { .layout { grid-template-columns: 1fr; grid-template-areas: "setup" "pick" "dashboard" "players" "board"; } .panel { padding: 12px; } .summary-grid { grid-template-columns: repeat(2, 1fr); } button, .file-button { width: 100%; } }
 .draft-order-list { display: grid; gap: 8px; }
 .order-row { display: grid; grid-template-columns: 34px 34px minmax(0, 1fr) auto; gap: 8px; align-items: center; min-height: 46px; border: 1px solid var(--line); border-radius: 7px; background: #fffdf8; padding: 6px 8px; cursor: grab; }
 .order-row.is-dragging { opacity: 0.58; cursor: grabbing; box-shadow: var(--shadow); }
@@ -76,7 +72,6 @@ tr:last-child td { border-bottom: 0; }
 .pick-form.locked button, .pick-form.locked input { pointer-events: none; }
 @media (max-width: 720px) { .order-row { grid-template-columns: 30px 30px minmax(0, 1fr); } .order-row-actions { grid-column: 1 / -1; } .order-move { flex: 1; } }
 
-.trade-panel { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
 .trade-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .trade-form label:first-child { grid-column: 1 / -1; }
 .trade-list { display: grid; gap: 8px; margin-top: 12px; }
@@ -100,7 +95,6 @@ body.draft-started .layout { grid-template-columns: minmax(340px, 0.75fr) minmax
 body:not(.draft-started) #edit-setup { display: none; }
 @media (max-width: 1100px) { body.draft-started .layout { grid-template-columns: 1fr 1fr; grid-template-areas: "pick dashboard" "players players" "board board"; } }
 @media (max-width: 720px) { body.draft-started .layout { grid-template-columns: 1fr; grid-template-areas: "pick" "dashboard" "players" "board"; } }
-.keeper-panel { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
 .keeper-list { display: grid; gap: 10px; }
 .keeper-row { display: grid; grid-template-columns: 88px repeat(3, minmax(0, 1fr)); gap: 8px; align-items: center; }
 .keeper-row strong { font-size: 0.86rem; }
@@ -137,7 +131,7 @@ body:not(.draft-started) #edit-setup { display: none; }
 .draft-player-button { min-width: 64px; min-height: 32px; padding: 0 10px; }
 .flag-button { min-width: 38px; min-height: 32px; padding: 0 8px; background: white; color: var(--muted); border-color: var(--line); }
 .flag-button.flagged { background: #fff7df; color: #9a6700; border-color: #e0b957; }
-body.owner-page .setup-panel, body.owner-page .pick-panel, body.owner-page .dashboard-panel, body.owner-page .board-panel, body.owner-page .players-panel { display: none; }
+body.owner-page .setup-panel, body.owner-page .pick-panel, body.owner-page .dashboard-panel, body.owner-page .board-panel, body.owner-page .players-panel, body.owner-page .draft-order-panel, body.owner-page .keeper-panel, body.owner-page .trade-panel { display: none; }
 body.owner-page .owner-page-panel { display: block; }
 body.owner-page .layout { grid-template-columns: 1fr; grid-template-areas: "owner"; }
 body #owner-home { display: none; }
@@ -151,20 +145,26 @@ body:not(.draft-started):not(.owner-page) #owner-home {
 }
 body:not(.draft-started):not(.owner-page) .layout {
   grid-template-columns: minmax(320px, 760px);
-  grid-template-areas: "setup";
+  grid-template-areas: "setup" "order" "keepers" "trades";
   justify-content: center;
 }
 body:not(.draft-started):not(.owner-page) .setup-panel {
   grid-area: setup;
 }
-body:not(.draft-started):not(.owner-page) .owners-list {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+body:not(.draft-started):not(.owner-page) .draft-order-panel {
+  display: block;
+  grid-area: order;
+}
+body:not(.draft-started):not(.owner-page) .keeper-panel {
+  display: block;
+  grid-area: keepers;
+}
+body:not(.draft-started):not(.owner-page) .trade-panel {
+  display: block;
+  grid-area: trades;
 }
 @media (max-width: 720px) {
   body:not(.draft-started):not(.owner-page) .layout {
-    grid-template-columns: 1fr;
-  }
-  body:not(.draft-started):not(.owner-page) .owners-list {
     grid-template-columns: 1fr;
   }
 }

@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Fantasy Basketball Draft</title>
-    <link rel="stylesheet" href="styles.css?v=draft-hq-1">
+    <link rel="stylesheet" href="styles.css?v=draft-hq-2">
   </head>
   <body>
     <header class="topbar">
@@ -24,42 +24,43 @@
 
     <main class="layout">
       <section class="panel setup-panel" aria-labelledby="setup-title">
-        <div class="section-title"><h2 id="setup-title">League</h2><span id="order-status" class="pill">Set order</span></div>
+        <div class="section-title"><h2 id="setup-title">League</h2></div>
         <button id="start-draft" class="start-draft" type="button" disabled>Start Draft</button>
-        <div class="settings-grid">
-          <label>Rounds<input id="rounds-input" type="number" min="1" max="30" value="13"></label>
-          <label>Pick Timer<input id="timer-input" type="text" value="Offline"></label>
-        </div>
-        <div id="owners-list" class="owners-list"></div>
         <div id="team-links" class="team-links"></div>
-        <div class="draft-order-panel">
-          <div class="section-title"><h2>Draft Order</h2><button id="save-order" type="button">Save Order</button></div>
-          <div id="draft-order-list" class="draft-order-list"></div>
+      </section>
+
+      <section class="panel draft-order-panel" aria-labelledby="order-title">
+        <div class="section-title">
+          <h2 id="order-title">Draft Order</h2>
+          <div class="section-actions"><span id="order-status" class="pill">Set order</span><button id="save-order" type="button">Save Order</button></div>
         </div>
-        <div class="keeper-panel">
-          <div class="section-title">
-            <h2>Keepers</h2>
-            <label class="file-button secondary compact-file-button">Import Keepers<input id="keepers-input" type="file" accept=".csv,text/csv"></label>
-          </div>
-          <div id="keeper-list" class="keeper-list"></div>
+        <div id="draft-order-list" class="draft-order-list"></div>
+      </section>
+
+      <section class="panel keeper-panel" aria-labelledby="keepers-title">
+        <div class="section-title">
+          <h2 id="keepers-title">Keepers</h2>
+          <label class="file-button secondary compact-file-button">Import Keepers<input id="keepers-input" type="file" accept=".csv,text/csv"></label>
         </div>
-        <div class="trade-panel">
-          <div class="section-title">
-            <h2>Pick Trades</h2>
-            <div class="section-actions">
-              <label class="file-button secondary compact-file-button">Import Trades<input id="trades-input" type="file" accept=".csv,text/csv"></label>
-              <button id="add-trade" type="button">Add Trade</button>
-            </div>
+        <div id="keeper-list" class="keeper-list"></div>
+      </section>
+
+      <section class="panel trade-panel" aria-labelledby="trades-title">
+        <div class="section-title">
+          <h2 id="trades-title">Pick Trades</h2>
+          <div class="section-actions">
+            <label class="file-button secondary compact-file-button">Import Trades<input id="trades-input" type="file" accept=".csv,text/csv"></label>
+            <button id="add-trade" type="button">Add Trade</button>
           </div>
-          <div class="trade-form">
-            <label>Type<select id="trade-type"><option value="swap">Swap picks</option><option value="transfer">Transfer pick</option></select></label>
-            <label>Giving Owner<select id="trade-from-owner"></select></label>
-            <label>Giving Round<input id="trade-from-round" type="number" min="1" max="30" value="4"></label>
-            <label>Receiving Owner<select id="trade-to-owner"></select></label>
-            <label id="trade-to-round-label">Receiving Round<input id="trade-to-round" type="number" min="1" max="30" value="10"></label>
-          </div>
-          <div id="trade-list" class="trade-list"></div>
         </div>
+        <div class="trade-form">
+          <label>Type<select id="trade-type"><option value="swap">Swap picks</option><option value="transfer">Transfer pick</option></select></label>
+          <label>Giving Owner<select id="trade-from-owner"></select></label>
+          <label>Giving Round<input id="trade-from-round" type="number" min="1" max="13" value="4"></label>
+          <label>Receiving Owner<select id="trade-to-owner"></select></label>
+          <label id="trade-to-round-label">Receiving Round<input id="trade-to-round" type="number" min="1" max="13" value="10"></label>
+        </div>
+        <div id="trade-list" class="trade-list"></div>
       </section>
 
       <section class="panel pick-panel" aria-labelledby="pick-title">
@@ -153,25 +154,6 @@
       </section>
     </main>
 
-    <template id="owner-row-template"><div class="owner-row"><input class="owner-name" type="text" aria-label="Owner name"><input class="team-name" type="text" aria-label="Team name"><button class="remove-owner" type="button">Remove</button></div></template>
-    <script src="app.js?v=draft-hq-1"></script>
+    <script src="app.js?v=draft-hq-2"></script>
   </body>
 </html>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
