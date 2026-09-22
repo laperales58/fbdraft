@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Fantasy Basketball Draft</title>
-    <link rel="stylesheet" href="styles.css?v=draft-hq-2">
+    <link rel="stylesheet" href="styles.css?v=draft-hq-3">
   </head>
   <body>
     <header class="topbar">
@@ -36,6 +36,7 @@
             <button class="setup-tab is-active" type="button" role="tab" aria-selected="true" data-setup-tab="order">Draft Order</button>
             <button class="setup-tab" type="button" role="tab" aria-selected="false" data-setup-tab="keepers">Keepers</button>
             <button class="setup-tab" type="button" role="tab" aria-selected="false" data-setup-tab="trades">Trades</button>
+            <button class="setup-tab" type="button" role="tab" aria-selected="false" data-setup-tab="map">Pick Map</button>
           </div>
 
           <div class="setup-tab-panel" data-setup-panel="order" role="tabpanel">
@@ -70,6 +71,26 @@
               <label id="trade-to-round-label">Receiving Round<input id="trade-to-round" type="number" min="1" max="13" value="10"></label>
             </div>
             <div id="trade-list" class="trade-list"></div>
+          </div>
+
+          <div class="setup-tab-panel" data-setup-panel="map" role="tabpanel" hidden>
+            <div class="section-title">
+              <h2>Pick Map</h2>
+              <span class="pill">Who owns each round</span>
+            </div>
+            <p class="pick-map-note">Each row is who currently controls that pick. Names in <span class="pick-map-gained">gold</span> were acquired by trade; a dash means that owner traded their own pick away that round.</p>
+            <div class="table-wrap">
+              <table class="pick-map-table">
+                <thead>
+                  <tr>
+                    <th>Owner</th>
+                    <th>R1</th><th>R2</th><th>R3</th><th>R4</th><th>R5</th><th>R6</th><th>R7</th>
+                    <th>R8</th><th>R9</th><th>R10</th><th>R11</th><th>R12</th><th>R13</th>
+                  </tr>
+                </thead>
+                <tbody id="pick-map-body"></tbody>
+              </table>
+            </div>
           </div>
         </div>
       </section>
@@ -165,6 +186,6 @@
       </section>
     </main>
 
-    <script src="app.js?v=draft-hq-2"></script>
+    <script src="app.js?v=draft-hq-3"></script>
   </body>
 </html>
