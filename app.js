@@ -1,6 +1,6 @@
 const STORAGE_KEY = "fantasyBasketballDraftState.v1";
 const ADMIN_OWNER_NAME = "Luis";
-const OWNER_NAMES = ["Luis", "Daniel", "Theo", "Henry", "Reed", "Adolfo", "Ivan", "Clay", "Mario", "Frank", "Z", "Yoshi"];
+const OWNER_NAMES = ["Luis", "Daniel", "Theo", "Henry", "Reed", "Adolfo", "Ivan", "Gus", "Mario", "Frank", "Z", "Yoshi"];
 const ROUNDS = 13;
 let activeOwnerTab = "board";
 let activeSetupTab = "order";
@@ -76,7 +76,8 @@ const els = {
   tradeToRound: document.querySelector("#trade-to-round"),
   tradeToRoundLabel: document.querySelector("#trade-to-round-label"),
   addTrade: document.querySelector("#add-trade"),
-  tradeList: document.querySelector("#trade-list")
+  tradeList: document.querySelector("#trade-list"),
+  pickMapBody: document.querySelector("#pick-map-body")
 };
 
 function defaultState() {
@@ -655,6 +656,35 @@ function renderTrades() {
   });
 }
 
+function renderPickMap() {
+  if (!els.pickMapBody) return;
+  const tradeMap = buildPickTradeMap();
+  const owners = state.owners;
+  const ownerIndex = new Map(owners.map((owner, index) => [owner.id, index]));
+  const grid = owners.map(() => Array.from({ length: ROUNDS }, () => []));
+
+  for (let round = 1; round <= ROUNDS; round += 1) {
+    for (const original of owners) {
+      const index = basePickIndexFor(original.id, round);
+      if (index == null) continue;
+      const currentOwnerId = tradeMap.get(index) || original.id;
+      const rowIndex = ownerIndex.get(currentOwnerId);
+      if (rowIndex == null) continue;
+      grid[rowIndex][round - 1].push({ name: original.owner, self: original.id === currentOwnerId });
+    }
+  }
+
+  els.pickMapBody.innerHTML = owners.map((owner, rowIndex) => {
+    const cells = grid[rowIndex].map((entries) => {
+      if (!entries.length) return "<td class=\"pick-map-cell empty\">—</td>";
+      const hasGained = entries.some((entry) => !entry.self);
+      const html = entries.map((entry) => entry.self ? escapeHtml(entry.name) : "<span class=\"pick-map-gained\">" + escapeHtml(entry.name) + "</span>").join(", ");
+      return "<td class=\"pick-map-cell" + (hasGained ? " has-gained" : "") + "\">" + html + "</td>";
+    }).join("");
+    return "<tr><th scope=\"row\">" + escapeHtml(owner.owner) + "</th>" + cells + "</tr>";
+  }).join("");
+}
+
 function normalizeTradeType(value) {
   const tradeType = key(value);
   if (["transfer", "one-way", "one way", "move"].includes(tradeType)) return "transfer";
@@ -831,7 +861,7 @@ function setOwnerTab(tab) {
 }
 
 function setSetupTab(tab) {
-  activeSetupTab = ["order", "keepers", "trades"].includes(tab) ? tab : "order";
+  activeSetupTab = ["order", "keepers", "trades", "map"].includes(tab) ? tab : "order";
   document.querySelectorAll(".setup-tab").forEach((button) => {
     const active = button.dataset.setupTab === activeSetupTab;
     button.classList.toggle("is-active", active);
@@ -1025,6 +1055,7 @@ function render() {
   renderDraftOrder();
   renderKeepers();
   renderTrades();
+  renderPickMap();
   setSetupTab(activeSetupTab);
   renderSelects();
   renderBoard();

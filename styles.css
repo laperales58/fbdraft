@@ -79,6 +79,14 @@ tr:last-child td { border-bottom: 0; }
 .trade-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; border: 1px solid var(--line); border-radius: 6px; padding: 9px; background: #fffdf8; }
 .trade-row strong { display: block; font-size: 0.9rem; }
 .trade-row span { color: var(--muted); font-size: 0.8rem; }
+.pick-map-note { margin: 0 0 12px; color: var(--muted); font-size: 0.84rem; }
+.pick-map-table { min-width: 860px; }
+.pick-map-table th:first-child, .pick-map-table td:first-child { position: sticky; left: 0; background: #fffdf8; text-align: left; white-space: nowrap; }
+.pick-map-table th { text-align: center; }
+.pick-map-cell { text-align: center; font-size: 0.84rem; }
+.pick-map-cell.empty { color: var(--muted); }
+.pick-map-cell.has-gained { background: #fffaf0; }
+.pick-map-gained { color: var(--gold); font-weight: 800; }
 .pick-card.compensation { border-left-color: var(--gold); }
 .pick-card.traded { background: #f4fbfc; }
 .pick-card.skipped { border-left-color: #9aa3af; background: #f3f4f6; color: var(--muted); }
@@ -115,7 +123,9 @@ body:not(.draft-started) #edit-setup { display: none; }
 .owner-clock-panel span { color: var(--muted); }
 .owner-clock-panel.is-on-clock { border-left-color: var(--danger); background: #fff5f3; }
 .owner-tab-shell, .setup-tab-shell { display: grid; gap: 12px; }
-.owner-tabs, .setup-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; padding: 4px; border: 1px solid var(--line); border-radius: 8px; background: #fffdf8; margin-bottom: 2px; }
+.owner-tabs, .setup-tabs { display: grid; gap: 6px; padding: 4px; border: 1px solid var(--line); border-radius: 8px; background: #fffdf8; margin-bottom: 2px; }
+.owner-tabs { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.setup-tabs { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .owner-tab, .setup-tab { min-height: 38px; background: transparent; color: var(--muted); border-color: transparent; }
 .owner-tab:hover, .setup-tab:hover { background: white; color: var(--accent-strong); }
 .owner-tab.is-active, .setup-tab.is-active { background: var(--accent); color: white; border-color: var(--accent); }
