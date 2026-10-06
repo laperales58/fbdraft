@@ -212,3 +212,4 @@ body:not(.draft-started):not(.owner-page) .setup-tabs-panel {
 .history-main span { color: var(--muted); font-size: 0.78rem; }
 .history-restore { min-height: 34px; }
 @media (max-width: 720px) { .history-row { grid-template-columns: 1fr; gap: 6px; } }
+body.guest-owner-page .admin-only { display: none; }

@@ -1196,6 +1196,7 @@ function renderTeamLinks() {
 function renderOwnerPage() {
   const owner = ownerFromUrl();
   document.body.classList.toggle("owner-page", Boolean(owner));
+  document.body.classList.toggle("guest-owner-page", Boolean(owner && !ownerHasAdminPowers(owner)));
   if (!owner) return;
 
   state.selectedOwnerId = owner.id;
