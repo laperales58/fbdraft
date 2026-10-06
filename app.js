@@ -11,6 +11,11 @@ let suppressServerSync = false;
 let savingToServer = false;
 let queuedServerState = null;
 let conflictAlertShown = false;
+let tradeSelection = { a: new Set(), b: new Set() };
+let queuedServerMeta = null;
+let historyEntries = null;
+let historyError = "";
+let historyLoading = false;
 
 function makeOwner(name, index) {
   return { id: "owner-" + (index + 1), owner: name, team: name };
@@ -48,6 +53,12 @@ const els = {
   ownerPageCount: document.querySelector("#owner-page-count"),
   ownerAdminPanel: document.querySelector("#owner-admin-panel"),
   ownerAdminHome: document.querySelector("#owner-admin-home"),
+  ownerAdminUndo: document.querySelector("#owner-admin-undo"),
+  ownerAdminHistory: document.querySelector("#owner-admin-history"),
+  ownerHistoryTab: document.querySelector("#owner-history-tab"),
+  historyCount: document.querySelector("#history-count"),
+  historyRefresh: document.querySelector("#history-refresh"),
+  historyList: document.querySelector("#history-list"),
   ownerAdminReset: document.querySelector("#owner-admin-reset"),
   ownerPageSelect: document.querySelector("#owner-page-select"),
   ownerPageSummary: document.querySelector("#owner-page-summary"),
@@ -69,12 +80,12 @@ const els = {
   keepersInput: document.querySelector("#keepers-input"),
   keeperList: document.querySelector("#keeper-list"),
   tradesInput: document.querySelector("#trades-input"),
-  tradeType: document.querySelector("#trade-type"),
-  tradeFromOwner: document.querySelector("#trade-from-owner"),
-  tradeFromRound: document.querySelector("#trade-from-round"),
-  tradeToOwner: document.querySelector("#trade-to-owner"),
-  tradeToRound: document.querySelector("#trade-to-round"),
-  tradeToRoundLabel: document.querySelector("#trade-to-round-label"),
+  tradeOwnerA: document.querySelector("#trade-owner-a"),
+  tradeOwnerB: document.querySelector("#trade-owner-b"),
+  tradePicksA: document.querySelector("#trade-picks-a"),
+  tradePicksB: document.querySelector("#trade-picks-b"),
+  tradeSummary: document.querySelector("#trade-summary"),
+  clearTrade: document.querySelector("#clear-trade"),
   addTrade: document.querySelector("#add-trade"),
   tradeList: document.querySelector("#trade-list"),
   pickMapBody: document.querySelector("#pick-map-body")
@@ -126,6 +137,11 @@ function saveState(options = {}) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   if (!serverSyncEnabled || suppressServerSync || options.localOnly) return;
   queuedServerState = stateSnapshot();
+  const previousMeta = queuedServerMeta || {};
+  queuedServerMeta = {
+    label: options.label || previousMeta.label || "Draft updated",
+    history: options.history !== false || Boolean(previousMeta.history)
+  };
   flushServerSave();
 }
 
@@ -135,13 +151,15 @@ async function flushServerSave() {
 
   while (queuedServerState && serverSyncEnabled) {
     const snapshot = queuedServerState;
+    const meta = queuedServerMeta || {};
     queuedServerState = null;
+    queuedServerMeta = null;
 
     try {
       const response = await fetch("/api/state", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ version: serverVersion, state: snapshot }),
+        body: JSON.stringify({ version: serverVersion, state: snapshot, label: meta.label, history: meta.history !== false }),
       });
 
       const payload = await response.json();
@@ -153,6 +171,7 @@ async function flushServerSave() {
 
       serverVersion = payload.version;
       localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+      if (historyTabOpen()) loadHistory();
     } catch (error) {
       console.error(error);
       serverSyncEnabled = false;
@@ -281,7 +300,7 @@ function importPlayers(text, options = {}) {
   state.players = csvRecords(text).map((record, index) => playerFromRecord(record, index))
     .filter((player) => player.player)
     .sort((a, b) => (a.rank || 9999) - (b.rank || 9999) || a.player.localeCompare(b.player));
-  saveState();
+  saveState({ label: "Player list imported" });
   if (!options.silent) render();
 }
 
@@ -311,6 +330,17 @@ function basePickIndexFor(ownerId, round) {
 function buildPickTradeMap() {
   const map = new Map();
   for (const trade of state.pickTrades) {
+    if (trade.type === "package") {
+      for (const pick of trade.aGives || []) {
+        const index = basePickIndexFor(pick.originalOwnerId, pick.round);
+        if (index != null) map.set(index, trade.ownerBId);
+      }
+      for (const pick of trade.bGives || []) {
+        const index = basePickIndexFor(pick.originalOwnerId, pick.round);
+        if (index != null) map.set(index, trade.ownerAId);
+      }
+      continue;
+    }
     const fromIndex = basePickIndexFor(trade.fromOwnerId, trade.fromRound);
     if (fromIndex == null) continue;
     if (trade.type === "swap") {
@@ -487,7 +517,7 @@ function addPick(ownerId, playerName) {
   if (draftedPlayerIds().has(player.id) || draftedPlayerNames().has(key(player.player))) return alert(player.player + " has already been drafted or kept.");
   state.picks.push({ pick: schedulePick.pick, pickIndex: scheduleIndex, round: schedulePick.round, roundLabel: schedulePick.roundLabel, ownerId: schedulePick.ownerId, playerId: player.id, draftedAt: new Date().toISOString(), compensation: schedulePick.compensation, traded: schedulePick.traded });
   els.pickPlayer.value = "";
-  saveState();
+  saveState({ label: "Pick " + schedulePick.pick + ": " + ownerName(schedulePick.ownerId) + " took " + player.player });
   render();
 }
 
@@ -518,7 +548,7 @@ function saveDraftOrderFromForm() {
   if (new Set(ids).size !== state.owners.length) return alert("Each owner can only appear once in the draft order.");
   if (state.picks.length && !confirm("Changing the order after picks exist can make the board confusing. Save it anyway?")) return;
   state.draftOrder = ids;
-  saveState();
+  saveState({ label: "Draft order saved" });
   render();
 }
 
@@ -588,7 +618,7 @@ function importKeepers(text, options = {}) {
     return 0;
   }
   state.keepers = keepers;
-  saveState();
+  saveState({ label: "Keepers imported" });
   if (!options.silent) {
     render();
     alert("Imported " + imported + " keeper" + (imported === 1 ? "" : "s") + ".");
@@ -611,7 +641,7 @@ function renderKeepers() {
       input.value = values[i] || "";
       input.addEventListener("input", () => {
         state.keepers[owner.id][i] = input.value;
-        saveState();
+        saveState({ label: "Keepers edited" });
         renderBoard();
         renderDashboard();
         renderPlayers();
@@ -623,17 +653,85 @@ function renderKeepers() {
   }
 }
 
+function overallPickNumber(originalOwnerId, round) { const index = basePickIndexFor(originalOwnerId, round); return index == null ? null : index + 1; }
+function pickNumberText(originalOwnerId, round) { const number = overallPickNumber(originalOwnerId, round); return number == null ? "" : "#" + number; }
+function pickRef(originalOwnerId, round) { return originalOwnerId + "|" + round; }
+function parsePickRef(ref) { const parts = ref.split("|"); return { originalOwnerId: parts[0], round: Number(parts[1]) }; }
+function pickCountText(count) { return count + " pick" + (count === 1 ? "" : "s"); }
+
+function currentPickHoldings() {
+  const tradeMap = buildPickTradeMap();
+  const holdings = Object.fromEntries(state.owners.map((owner) => [owner.id, []]));
+  for (let round = 1; round <= ROUNDS; round += 1) {
+    for (const original of state.owners) {
+      const index = basePickIndexFor(original.id, round);
+      if (index == null) continue;
+      const holderId = tradeMap.get(index) || original.id;
+      if (holdings[holderId]) holdings[holderId].push({ originalOwnerId: original.id, round, ref: pickRef(original.id, round) });
+    }
+  }
+  return holdings;
+}
+
+function renderTradePickGrid(side, ownerId, holdings) {
+  const container = side === "a" ? els.tradePicksA : els.tradePicksB;
+  const held = holdings[ownerId] || [];
+  const heldRefs = new Set(held.map((pick) => pick.ref));
+  for (const ref of Array.from(tradeSelection[side])) if (!heldRefs.has(ref)) tradeSelection[side].delete(ref);
+  container.innerHTML = held.length ? held.map((pick) => {
+    const selected = tradeSelection[side].has(pick.ref);
+    const acquired = pick.originalOwnerId !== ownerId;
+    return "<button type=\"button\" class=\"trade-pick" + (selected ? " is-selected" : "") + (acquired ? " acquired" : "") + "\" data-side=\"" + side + "\" data-ref=\"" + escapeHtml(pick.ref) + "\" aria-pressed=\"" + selected + "\" title=\"" + escapeHtml(ownerName(pick.originalOwnerId)) + "'s round " + pick.round + " pick, overall " + pickNumberText(pick.originalOwnerId, pick.round) + "\"><strong>R" + pick.round + " <em>" + pickNumberText(pick.originalOwnerId, pick.round) + "</em></strong>" + (acquired ? "<span>" + escapeHtml(ownerName(pick.originalOwnerId)) + "</span>" : "") + "</button>";
+  }).join("") : "<div class=\"empty-state\">No picks left to trade.</div>";
+}
+
+function renderTradeSummary() {
+  const ownerAId = els.tradeOwnerA.value;
+  const ownerBId = els.tradeOwnerB.value;
+  const aCount = tradeSelection.a.size;
+  const bCount = tradeSelection.b.size;
+  const sameOwner = ownerAId === ownerBId;
+  let text = ownerName(ownerAId) + " sends " + pickCountText(aCount) + " \u00b7 " + ownerName(ownerBId) + " sends " + pickCountText(bCount);
+  if (sameOwner) text = "Choose two different owners.";
+  else if (!aCount && !bCount) text = "Tap the picks each owner is sending.";
+  els.tradeSummary.textContent = text;
+  els.addTrade.disabled = sameOwner || (!aCount && !bCount);
+  els.clearTrade.disabled = !aCount && !bCount;
+}
+
 function renderTradeControls() {
-  const selectedFrom = els.tradeFromOwner.value || state.owners[0].id;
-  const selectedTo = els.tradeToOwner.value || state.owners[1].id;
-  els.tradeFromOwner.innerHTML = ownerOptions(selectedFrom);
-  els.tradeToOwner.innerHTML = ownerOptions(selectedTo);
-  els.tradeToRoundLabel.style.display = els.tradeType.value === "swap" ? "grid" : "none";
+  const selectedA = els.tradeOwnerA.value || state.owners[0].id;
+  const selectedB = els.tradeOwnerB.value || state.owners[1].id;
+  els.tradeOwnerA.innerHTML = ownerOptions(selectedA);
+  els.tradeOwnerB.innerHTML = ownerOptions(selectedB);
+  els.tradeOwnerA.value = selectedA;
+  els.tradeOwnerB.value = selectedB;
+  const holdings = currentPickHoldings();
+  renderTradePickGrid("a", selectedA, holdings);
+  renderTradePickGrid("b", selectedB, holdings);
+  renderTradeSummary();
+}
+
+function tradePicksText(ownerId, picks) {
+  if (!picks || !picks.length) return "nothing";
+  return picks.slice().sort((x, y) => x.round - y.round).map((pick) => "R" + pick.round + " (" + pickNumberText(pick.originalOwnerId, pick.round) + (pick.originalOwnerId !== ownerId ? ", " + ownerName(pick.originalOwnerId) + "'s" : "") + ")").join(", ");
 }
 
 function tradeText(trade) {
-  if (trade.type === "swap") return ownerName(trade.fromOwnerId) + " R" + trade.fromRound + " for " + ownerName(trade.toOwnerId) + " R" + trade.toRound;
-  return ownerName(trade.fromOwnerId) + " R" + trade.fromRound + " to " + ownerName(trade.toOwnerId);
+  if (trade.type === "package") return ownerName(trade.ownerAId) + " sends " + tradePicksText(trade.ownerAId, trade.aGives) + " \u00b7 " + ownerName(trade.ownerBId) + " sends " + tradePicksText(trade.ownerBId, trade.bGives);
+  const fromText = " R" + trade.fromRound + " (" + pickNumberText(trade.fromOwnerId, trade.fromRound) + ")";
+  if (trade.type === "swap") return ownerName(trade.fromOwnerId) + fromText + " for " + ownerName(trade.toOwnerId) + " R" + trade.toRound + " (" + pickNumberText(trade.toOwnerId, trade.toRound) + ")";
+  return ownerName(trade.fromOwnerId) + fromText + " to " + ownerName(trade.toOwnerId);
+}
+
+function tradeKindText(trade) {
+  if (trade.type === "package") {
+    const aCount = (trade.aGives || []).length;
+    const bCount = (trade.bGives || []).length;
+    if (!aCount || !bCount) return "One-way transfer of " + pickCountText(aCount + bCount);
+    return aCount + "-for-" + bCount + " pick trade";
+  }
+  return trade.type === "swap" ? "Specific pick swap" : "One-way pick transfer";
 }
 
 function renderTrades() {
@@ -646,10 +744,10 @@ function renderTrades() {
   state.pickTrades.forEach((trade) => {
     const row = document.createElement("div");
     row.className = "trade-row";
-    row.innerHTML = "<div><strong>" + escapeHtml(tradeText(trade)) + "</strong><span>" + (trade.type === "swap" ? "Specific pick swap" : "One-way pick transfer") + "</span></div><button type=\"button\" data-trade-id=\"" + escapeHtml(trade.id) + "\">Remove</button>";
+    row.innerHTML = "<div><strong>" + escapeHtml(tradeText(trade)) + "</strong><span>" + escapeHtml(tradeKindText(trade)) + "</span></div><button type=\"button\" data-trade-id=\"" + escapeHtml(trade.id) + "\">Remove</button>";
     row.querySelector("button").addEventListener("click", () => {
       state.pickTrades = state.pickTrades.filter((item) => item.id !== trade.id);
-      saveState();
+      saveState({ label: "Trade removed: " + tradeText(trade) });
       render();
     });
     els.tradeList.append(row);
@@ -670,18 +768,23 @@ function renderPickMap() {
       const currentOwnerId = tradeMap.get(index) || original.id;
       const rowIndex = ownerIndex.get(currentOwnerId);
       if (rowIndex == null) continue;
-      grid[rowIndex][round - 1].push({ name: original.owner, self: original.id === currentOwnerId });
+      grid[rowIndex][round - 1].push({ name: original.owner, self: original.id === currentOwnerId, number: index + 1 });
     }
   }
 
   els.pickMapBody.innerHTML = owners.map((owner, rowIndex) => {
+    let total = 0;
     const cells = grid[rowIndex].map((entries) => {
-      if (!entries.length) return "<td class=\"pick-map-cell empty\">—</td>";
+      total += entries.length;
+      if (!entries.length) return "<td class=\"pick-map-cell empty\" title=\"Traded away\">—</td>";
       const hasGained = entries.some((entry) => !entry.self);
-      const html = entries.map((entry) => entry.self ? escapeHtml(entry.name) : "<span class=\"pick-map-gained\">" + escapeHtml(entry.name) + "</span>").join(", ");
-      return "<td class=\"pick-map-cell" + (hasGained ? " has-gained" : "") + "\">" + html + "</td>";
+      const html = entries.slice().sort((a, b) => Number(b.self) - Number(a.self) || a.number - b.number).map((entry) => entry.self
+        ? "<span class=\"pick-map-num\" title=\"Own pick, overall #" + entry.number + "\">#" + entry.number + "</span>"
+        : "<span class=\"pick-map-gained\" title=\"From " + escapeHtml(entry.name) + ", overall #" + entry.number + "\">" + escapeHtml(entry.name) + " <span class=\"pick-map-chip-num\">#" + entry.number + "</span></span>").join("");
+      return "<td class=\"pick-map-cell" + (hasGained ? " has-gained" : "") + "\"><div class=\"pick-map-stack\">" + html + "</div></td>";
     }).join("");
-    return "<tr><th scope=\"row\">" + escapeHtml(owner.owner) + "</th>" + cells + "</tr>";
+    const totalClass = total > ROUNDS ? " over" : total < ROUNDS ? " under" : "";
+    return "<tr><th scope=\"row\">" + escapeHtml(owner.owner) + "</th>" + cells + "<td class=\"pick-map-total" + totalClass + "\">" + total + "</td></tr>";
   }).join("");
 }
 
@@ -695,14 +798,27 @@ function tradeFromRecord(record) {
   const type = normalizeTradeType(readColumn(record, ["type", "trade type", "kind"]));
   const fromOwner = ownerFromValue(readColumn(record, ["from_owner", "from owner", "giving_owner", "giving owner", "from", "owner", "giving"]));
   const toOwner = ownerFromValue(readColumn(record, ["to_owner", "to owner", "receiving_owner", "receiving owner", "to", "recipient", "receiving"]));
-  const fromRound = toNumber(readColumn(record, ["from_round", "from round", "giving_round", "giving round", "round", "giving pick", "from pick"]));
-  const toRound = toNumber(readColumn(record, ["to_round", "to round", "receiving_round", "receiving round", "receiving pick", "to pick"]));
+  const fromRounds = parseRoundList(readColumn(record, ["from_round", "from round", "giving_round", "giving round", "round", "giving pick", "from pick", "from_rounds", "from rounds"]));
+  const toRounds = parseRoundList(readColumn(record, ["to_round", "to round", "receiving_round", "receiving round", "receiving pick", "to pick", "to_rounds", "to rounds"]));
+  const fromRound = fromRounds[0] || 0;
+  const toRound = toRounds[0] || 0;
 
+  if (fromOwner && toOwner && fromOwner.id !== toOwner.id && (fromRounds.length > 1 || toRounds.length > 1)) {
+    return { id: crypto.randomUUID(), type: "package", ownerAId: fromOwner.id, ownerBId: toOwner.id, aGives: fromRounds.map((round) => ({ originalOwnerId: fromOwner.id, round })), bGives: type === "swap" ? toRounds.map((round) => ({ originalOwnerId: toOwner.id, round })) : [] };
+  }
   if (!fromOwner || !toOwner || fromOwner.id === toOwner.id || !fromRound || (type === "swap" && !toRound)) return null;
   return { id: crypto.randomUUID(), type, fromOwnerId: fromOwner.id, fromRound, toOwnerId: toOwner.id, toRound: type === "swap" ? toRound : null };
 }
 
+function parseRoundList(value) {
+  return normalize(value).split(/[^0-9]+/).map(Number).filter((round) => round > 0 && round <= ROUNDS);
+}
+
 function tradeKey(trade) {
+  if (trade.type === "package") {
+    const refs = (picks) => (picks || []).map((pick) => pickRef(pick.originalOwnerId, pick.round)).sort().join(",");
+    return ["package", trade.ownerAId, refs(trade.aGives), trade.ownerBId, refs(trade.bGives)].join("|");
+  }
   return [trade.type, trade.fromOwnerId, trade.fromRound, trade.toOwnerId, trade.toRound || ""].join("|");
 }
 
@@ -746,13 +862,13 @@ function importTrades(text, options = {}) {
   const transactionTrades = csvRecords(text).map(tradeFromRecord).filter(Boolean).map((trade) => ({ ...trade, source }));
   const trades = transactionTrades.length ? transactionTrades : tradeMatrixRecords(text, { source });
   if (!trades.length) {
-    if (!options.silent) alert("No trades were imported. Use a pick matrix like your trades.csv or columns like type, from_owner, from_round, to_owner, to_round.");
+    if (!options.silent) alert("No trades were imported. Use a pick matrix like your trades.csv or columns like type, from_owner, from_round, to_owner, to_round (list several rounds like 4;6;8 for multi-pick trades).");
     return 0;
   }
 
   const existing = options.replaceSource ? state.pickTrades.filter((trade) => trade.source !== source) : state.pickTrades;
   state.pickTrades = dedupeTrades(trades.concat(existing));
-  saveState();
+  saveState({ label: "Trades imported" });
   if (!options.silent) {
     render();
     alert("Imported " + trades.length + " trade" + (trades.length === 1 ? "" : "s") + ".");
@@ -761,15 +877,17 @@ function importTrades(text, options = {}) {
 }
 
 function addTradeFromForm() {
-  const type = els.tradeType.value;
-  const fromOwnerId = els.tradeFromOwner.value;
-  const toOwnerId = els.tradeToOwner.value;
-  const fromRound = Math.max(1, Number(els.tradeFromRound.value) || 1);
-  const toRound = Math.max(1, Number(els.tradeToRound.value) || 1);
-  if (fromOwnerId === toOwnerId) return alert("Pick trades need two different owners.");
+  const ownerAId = els.tradeOwnerA.value;
+  const ownerBId = els.tradeOwnerB.value;
+  if (ownerAId === ownerBId) return alert("Pick trades need two different owners.");
+  const aGives = Array.from(tradeSelection.a).map(parsePickRef).sort((x, y) => x.round - y.round);
+  const bGives = Array.from(tradeSelection.b).map(parsePickRef).sort((x, y) => x.round - y.round);
+  if (!aGives.length && !bGives.length) return alert("Select at least one pick to trade.");
   if (state.picks.length && !confirm("Adding trades after picks exist can make the board confusing. Add it anyway?")) return;
-  state.pickTrades.push({ id: crypto.randomUUID(), type, fromOwnerId, fromRound, toOwnerId, toRound: type === "swap" ? toRound : null });
-  saveState();
+  const trade = { id: crypto.randomUUID(), type: "package", ownerAId, ownerBId, aGives, bGives };
+  state.pickTrades.push(trade);
+  tradeSelection = { a: new Set(), b: new Set() };
+  saveState({ label: "Trade added: " + tradeText(trade) });
   render();
 }
 
@@ -849,7 +967,11 @@ function renderOwnerDraftBoard(ownerId) {
 }
 
 function setOwnerTab(tab) {
-  activeOwnerTab = ["board", "pool", "roster"].includes(tab) ? tab : "board";
+  const owner = ownerFromUrl();
+  const allowed = ["board", "pool", "roster"].concat(owner && ownerHasAdminPowers(owner) ? ["history"] : []);
+  const previous = activeOwnerTab;
+  activeOwnerTab = allowed.includes(tab) ? tab : "board";
+  if (activeOwnerTab === "history" && (previous !== "history" || historyEntries === null)) loadHistory();
   document.querySelectorAll(".owner-tab").forEach((button) => {
     const active = button.dataset.ownerTab === activeOwnerTab;
     button.classList.toggle("is-active", active);
@@ -861,7 +983,7 @@ function setOwnerTab(tab) {
 }
 
 function setSetupTab(tab) {
-  activeSetupTab = ["order", "keepers", "trades", "map"].includes(tab) ? tab : "order";
+  activeSetupTab = ["order", "keepers", "trades", "map", "pages"].includes(tab) ? tab : "order";
   document.querySelectorAll(".setup-tab").forEach((button) => {
     const active = button.dataset.setupTab === activeSetupTab;
     button.classList.toggle("is-active", active);
@@ -912,6 +1034,118 @@ function renderPlayers() {
   els.playersBody.innerHTML = players.length ? players.slice(0, 300).map((player) => "<tr><td>" + (player.rank || "") + "</td><td>" + escapeHtml(player.player) + "</td><td>" + escapeHtml(player.pos) + "</td><td>" + escapeHtml(player.team) + "</td><td>" + player.pts.toFixed(1) + "</td><td>" + player.ast.toFixed(1) + "</td><td>" + player.stl.toFixed(1) + "</td><td>" + player.reb.toFixed(1) + "</td><td>" + player.blk.toFixed(1) + "</td><td>" + player.to.toFixed(1) + "</td><td>" + player.fg_pct.toFixed(3) + "</td><td>" + player.ft_pct.toFixed(3) + "</td><td>" + player.threepm.toFixed(1) + "</td></tr>").join("") : "<tr><td class=\"empty-state\" colspan=\"13\">Import a player CSV to fill the board.</td></tr>";
 }
 
+function lastDraftedPick() {
+  return state.picks.length ? state.picks[state.picks.length - 1] : null;
+}
+
+function draftedPickDescription(pick) {
+  const player = state.players.find((item) => item.id === pick.playerId);
+  return "Pick " + pick.pick + ": " + ownerName(pick.ownerId) + " took " + (player ? player.player : "a player");
+}
+
+function undoLastPick() {
+  const last = lastDraftedPick();
+  if (!last) return alert("There are no picks to undo.");
+  const description = draftedPickDescription(last);
+  if (!confirm("Undo " + description + "?\n\nThat player goes back in the pool and " + ownerName(last.ownerId) + " is on the clock again.")) return;
+  state.picks.pop();
+  saveState({ label: "Undid " + description });
+  render();
+}
+
+function renderAdminUndo() {
+  const last = lastDraftedPick();
+  els.ownerAdminUndo.disabled = !last;
+  els.ownerAdminUndo.textContent = last ? "Undo Pick " + last.pick : "Undo Last Pick";
+  els.ownerAdminUndo.title = last ? "Undo " + draftedPickDescription(last) : "No picks to undo yet";
+}
+
+function historyTabOpen() {
+  const owner = ownerFromUrl();
+  return Boolean(owner && ownerHasAdminPowers(owner) && activeOwnerTab === "history");
+}
+
+function historyTimeParts(iso) {
+  const date = new Date(iso);
+  const time = date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const today = new Date().toDateString() === date.toDateString();
+  return { time, day: today ? "Today" : date.toLocaleDateString([], { month: "short", day: "numeric" }) };
+}
+
+async function loadHistory() {
+  if (!serverSyncEnabled) {
+    historyEntries = [];
+    historyError = "History is saved by the shared server, so it isn't available in offline mode.";
+    renderHistory();
+    return;
+  }
+  if (historyLoading) return;
+  historyLoading = true;
+  try {
+    const response = await fetch("/api/history", { cache: "no-store" });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || "Could not load history.");
+    historyEntries = payload.entries || [];
+    historyError = "";
+  } catch (error) {
+    historyError = "Could not load the history right now. Check the connection and press Refresh.";
+  }
+  historyLoading = false;
+  renderHistory();
+}
+
+function renderHistory() {
+  if (!els.historyList) return;
+  if (historyError) {
+    els.historyCount.textContent = "Unavailable";
+    els.historyList.innerHTML = "<div class=\"empty-state\">" + escapeHtml(historyError) + "</div>";
+    return;
+  }
+  if (!historyEntries) {
+    els.historyCount.textContent = "Loading";
+    els.historyList.innerHTML = "<div class=\"empty-state\">Loading saved versions...</div>";
+    return;
+  }
+  els.historyCount.textContent = historyEntries.length + " saved version" + (historyEntries.length === 1 ? "" : "s");
+  if (!historyEntries.length) {
+    els.historyList.innerHTML = "<div class=\"empty-state\">No saved versions yet. They appear as soon as the draft changes.</div>";
+    return;
+  }
+  els.historyList.innerHTML = historyEntries.map((entry, index) => {
+    const when = historyTimeParts(entry.createdAt);
+    const current = index === 0;
+    const action = current
+      ? "<span class=\"pill\">Current</span>"
+      : "<button class=\"secondary history-restore\" type=\"button\" data-history-id=\"" + entry.id + "\">Restore</button>";
+    return "<div class=\"history-row" + (current ? " is-current" : "") + "\"><div class=\"history-time\">" + escapeHtml(when.time) + "<span>" + escapeHtml(when.day) + "</span></div><div class=\"history-main\"><strong>" + escapeHtml(entry.label) + "</strong><span>" + entry.picks + " pick" + (entry.picks === 1 ? "" : "s") + " made</span></div>" + action + "</div>";
+  }).join("");
+}
+
+async function restoreHistory(id) {
+  const entry = (historyEntries || []).find((item) => item.id === id);
+  if (!entry) return;
+  const when = historyTimeParts(entry.createdAt);
+  if (!confirm("Restore the draft to " + when.time + " (" + when.day + ")?\n\n" + entry.label + "\n\nEveryone's screen will switch to this version. You can undo this from the history.")) return;
+  try {
+    const response = await fetch("/api/history/" + id + "/restore", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ label: "Restored to " + when.time + ": " + entry.label })
+    });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || "Could not restore that version.");
+    serverVersion = payload.version;
+    queuedServerState = null;
+    queuedServerMeta = null;
+    applyState(payload.state);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    render();
+    loadHistory();
+  } catch (error) {
+    alert(error.message || "Could not restore that version.");
+  }
+}
+
 function ownerFromUrl() {
   const params = new URLSearchParams(window.location.search);
   const team = key(params.get("team"));
@@ -930,7 +1164,7 @@ function goToDraftRoom() {
 function resetDraftPicks() {
   if (!confirm("Clear drafted picks? Imported players, owners, draft order, trades, and keepers will stay.")) return;
   state.picks = [];
-  saveState();
+  saveState({ label: "All picks cleared (Reset)" });
   render();
 }
 
@@ -951,7 +1185,7 @@ function toggleFlag(ownerId, playerId) {
   if (flags.has(playerId)) flags.delete(playerId);
   else flags.add(playerId);
   state.playerFlags[ownerId] = Array.from(flags);
-  saveState();
+  saveState({ label: ownerName(ownerId) + " updated flagged players" });
   renderOwnerPage();
 }
 
@@ -966,7 +1200,10 @@ function renderOwnerPage() {
 
   state.selectedOwnerId = owner.id;
   if (!ownerRosterViewId) ownerRosterViewId = owner.id;
-  els.ownerAdminPanel.hidden = !ownerHasAdminPowers(owner);
+  const isAdmin = ownerHasAdminPowers(owner);
+  els.ownerAdminPanel.hidden = !isAdmin;
+  els.ownerHistoryTab.hidden = !isAdmin;
+  if (isAdmin) renderAdminUndo();
   els.ownerPageSummary.hidden = false;
   els.ownerClockPanel.hidden = false;
   document.querySelector(".owner-tab-shell").hidden = false;
@@ -1032,7 +1269,7 @@ async function loadDefaultCsv() {
   }
 
   suppressServerSync = false;
-  saveState();
+  saveState({ label: "Loaded players, keepers and trades from CSV files" });
   render();
 }
 
@@ -1067,7 +1304,7 @@ function render() {
 els.csvInput.addEventListener("change", async (event) => { const file = event.target.files[0]; if (!file) return; importPlayers(await file.text()); event.target.value = ""; });
 els.keepersInput.addEventListener("change", async (event) => { const file = event.target.files[0]; if (!file) return; importKeepers(await file.text()); event.target.value = ""; });
 els.tradesInput.addEventListener("change", async (event) => { const file = event.target.files[0]; if (!file) return; importTrades(await file.text()); event.target.value = ""; });
-els.stateInput.addEventListener("change", async (event) => { const file = event.target.files[0]; if (!file) return; Object.assign(state, JSON.parse(await file.text())); state.owners = defaultOwners; state.pickTrades = state.pickTrades || []; state.keepers = normalizeKeepers(state.keepers || {}); state.draftStarted = Boolean(state.draftStarted); saveState(); render(); event.target.value = ""; });
+els.stateInput.addEventListener("change", async (event) => { const file = event.target.files[0]; if (!file) return; Object.assign(state, JSON.parse(await file.text())); state.owners = defaultOwners; state.pickTrades = state.pickTrades || []; state.keepers = normalizeKeepers(state.keepers || {}); state.draftStarted = Boolean(state.draftStarted); saveState({ label: "Imported a saved state file" }); render(); event.target.value = ""; });
 els.exportState.addEventListener("click", () => {
   const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
@@ -1105,11 +1342,21 @@ els.draftOrderList.addEventListener("click", (event) => {
   if (!button) return;
   moveDraftOrderRow(button.closest(".order-row"), button.dataset.direction);
 });
-els.startDraft.addEventListener("click", () => { if (!hasDraftOrder()) return alert("Set the draft order first."); state.draftStarted = true; saveState(); render(); });
-els.editSetup.addEventListener("click", () => { state.draftStarted = false; saveState(); render(); });
+els.startDraft.addEventListener("click", () => { if (!hasDraftOrder()) return alert("Set the draft order first."); state.draftStarted = true; saveState({ label: "Draft started" }); render(); });
+els.editSetup.addEventListener("click", () => { state.draftStarted = false; saveState({ label: "Setup reopened" }); render(); });
 els.addTrade.addEventListener("click", addTradeFromForm);
-els.tradeType.addEventListener("change", renderTradeControls);
-els.ownerSelect.addEventListener("change", () => { state.selectedOwnerId = els.ownerSelect.value; saveState(); renderDashboard(); });
+els.tradeOwnerA.addEventListener("change", () => { tradeSelection.a.clear(); renderTradeControls(); });
+els.tradeOwnerB.addEventListener("change", () => { tradeSelection.b.clear(); renderTradeControls(); });
+els.clearTrade.addEventListener("click", () => { tradeSelection = { a: new Set(), b: new Set() }; renderTradeControls(); });
+[els.tradePicksA, els.tradePicksB].forEach((grid) => grid.addEventListener("click", (event) => {
+  const button = event.target.closest(".trade-pick");
+  if (!button) return;
+  const selection = tradeSelection[button.dataset.side];
+  if (selection.has(button.dataset.ref)) selection.delete(button.dataset.ref);
+  else selection.add(button.dataset.ref);
+  renderTradeControls();
+}));
+els.ownerSelect.addEventListener("change", () => { state.selectedOwnerId = els.ownerSelect.value; saveState({ history: false }); renderDashboard(); });
 els.ownerTabs.addEventListener("click", (event) => {
   const tab = event.target.closest(".owner-tab");
   if (!tab) return;
@@ -1141,6 +1388,13 @@ els.ownerPlayerBody.addEventListener("click", (event) => {
 els.ownerHome.addEventListener("click", goToDraftRoom);
 els.ownerAdminHome.addEventListener("click", goToDraftRoom);
 els.ownerAdminReset.addEventListener("click", resetDraftPicks);
+els.ownerAdminUndo.addEventListener("click", undoLastPick);
+els.ownerAdminHistory.addEventListener("click", () => { setOwnerTab("history"); });
+els.historyRefresh.addEventListener("click", loadHistory);
+els.historyList.addEventListener("click", (event) => {
+  const button = event.target.closest(".history-restore");
+  if (button) restoreHistory(Number(button.dataset.historyId));
+});
 window.addEventListener("popstate", render);
 els.pickForm.addEventListener("submit", (event) => { event.preventDefault(); addPick(els.pickOwner.value, els.pickPlayer.value); });
 els.searchInput.addEventListener("input", renderPlayers);

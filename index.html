@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Fantasy Basketball Draft</title>
-    <link rel="stylesheet" href="styles.css?v=draft-hq-3">
+    <link rel="stylesheet" href="styles.css?v=draft-hq-8">
   </head>
   <body>
     <header class="topbar">
@@ -26,7 +26,6 @@
       <section class="panel setup-panel" aria-labelledby="setup-title">
         <div class="section-title"><h2 id="setup-title">League</h2></div>
         <button id="start-draft" class="start-draft" type="button" disabled>Start Draft</button>
-        <div id="team-links" class="team-links"></div>
       </section>
 
       <section class="panel setup-tabs-panel" aria-labelledby="setup-tabs-title">
@@ -37,6 +36,7 @@
             <button class="setup-tab" type="button" role="tab" aria-selected="false" data-setup-tab="keepers">Keepers</button>
             <button class="setup-tab" type="button" role="tab" aria-selected="false" data-setup-tab="trades">Trades</button>
             <button class="setup-tab" type="button" role="tab" aria-selected="false" data-setup-tab="map">Pick Map</button>
+            <button class="setup-tab" type="button" role="tab" aria-selected="false" data-setup-tab="pages">Owner Pages</button>
           </div>
 
           <div class="setup-tab-panel" data-setup-panel="order" role="tabpanel">
@@ -58,19 +58,38 @@
           <div class="setup-tab-panel" data-setup-panel="trades" role="tabpanel" hidden>
             <div class="section-title">
               <h2>Pick Trades</h2>
+              <label class="file-button secondary compact-file-button">Import Trades<input id="trades-input" type="file" accept=".csv,text/csv"></label>
+            </div>
+            <p class="pick-map-note">Choose the two owners, then tap every pick each one is sending. Leave one side empty for a one-way transfer.</p>
+            <div class="trade-builder">
+              <div class="trade-side">
+                <label>Owner<select id="trade-owner-a"></select></label>
+                <span class="trade-side-label">Sends</span>
+                <div id="trade-picks-a" class="trade-pick-grid"></div>
+              </div>
+              <div class="trade-side">
+                <label>Owner<select id="trade-owner-b"></select></label>
+                <span class="trade-side-label">Sends</span>
+                <div id="trade-picks-b" class="trade-pick-grid"></div>
+              </div>
+            </div>
+            <div class="trade-summary-bar">
+              <span id="trade-summary">Tap the picks each owner is sending.</span>
               <div class="section-actions">
-                <label class="file-button secondary compact-file-button">Import Trades<input id="trades-input" type="file" accept=".csv,text/csv"></label>
+                <button id="clear-trade" class="secondary" type="button">Clear</button>
                 <button id="add-trade" type="button">Add Trade</button>
               </div>
             </div>
-            <div class="trade-form">
-              <label>Type<select id="trade-type"><option value="swap">Swap picks</option><option value="transfer">Transfer pick</option></select></label>
-              <label>Giving Owner<select id="trade-from-owner"></select></label>
-              <label>Giving Round<input id="trade-from-round" type="number" min="1" max="13" value="4"></label>
-              <label>Receiving Owner<select id="trade-to-owner"></select></label>
-              <label id="trade-to-round-label">Receiving Round<input id="trade-to-round" type="number" min="1" max="13" value="10"></label>
-            </div>
             <div id="trade-list" class="trade-list"></div>
+          </div>
+
+          <div class="setup-tab-panel" data-setup-panel="pages" role="tabpanel" hidden>
+            <div class="section-title">
+              <h2>Owner Pages</h2>
+              <span class="pill">Private boards</span>
+            </div>
+            <p class="pick-map-note">Each owner's own draft page, with their clock, player pool and roster. Open one or send the link to that owner.</p>
+            <div id="team-links" class="team-links"></div>
           </div>
 
           <div class="setup-tab-panel" data-setup-panel="map" role="tabpanel" hidden>
@@ -78,14 +97,14 @@
               <h2>Pick Map</h2>
               <span class="pill">Who owns each round</span>
             </div>
-            <p class="pick-map-note">Each row is who currently controls that pick. Names in <span class="pick-map-gained">gold</span> were acquired by trade; a dash means that owner traded their own pick away that round.</p>
+            <p class="pick-map-note"><span class="pick-map-legend"><span class="pick-map-num">#2</span> Own pick (overall number)</span><span class="pick-map-legend"><span class="pick-map-gained">Name <span class="pick-map-chip-num">#14</span></span> Acquired from that owner</span><span class="pick-map-legend"><span class="pick-map-dash">—</span> Traded away</span></p>
             <div class="table-wrap">
               <table class="pick-map-table">
                 <thead>
                   <tr>
                     <th>Owner</th>
                     <th>R1</th><th>R2</th><th>R3</th><th>R4</th><th>R5</th><th>R6</th><th>R7</th>
-                    <th>R8</th><th>R9</th><th>R10</th><th>R11</th><th>R12</th><th>R13</th>
+                    <th>R8</th><th>R9</th><th>R10</th><th>R11</th><th>R12</th><th>R13</th><th>Total</th>
                   </tr>
                 </thead>
                 <tbody id="pick-map-body"></tbody>
@@ -127,6 +146,8 @@
         <div id="owner-admin-panel" class="owner-admin-panel" hidden>
           <strong>Luis Admin</strong>
           <div class="owner-admin-actions">
+            <button id="owner-admin-undo" type="button">Undo Last Pick</button>
+            <button id="owner-admin-history" class="secondary" type="button">History</button>
             <button id="owner-admin-home" class="secondary" type="button">Draft Room</button>
             <button id="owner-admin-reset" class="danger" type="button">Reset Draft</button>
           </div>
@@ -138,6 +159,7 @@
             <button class="owner-tab is-active" type="button" role="tab" aria-selected="true" data-owner-tab="board">Live Board</button>
             <button class="owner-tab" type="button" role="tab" aria-selected="false" data-owner-tab="pool">Player Pool</button>
             <button class="owner-tab" type="button" role="tab" aria-selected="false" data-owner-tab="roster">Roster</button>
+            <button id="owner-history-tab" class="owner-tab" type="button" role="tab" aria-selected="false" data-owner-tab="history" hidden>History</button>
           </div>
           <div class="owner-tab-panel" data-owner-panel="board" role="tabpanel">
             <div class="section-title">
@@ -168,6 +190,17 @@
             </div>
             <div class="table-wrap"><table><thead><tr><th>Draft</th><th>Flag</th><th>ADP</th><th>Player</th><th>Pos</th><th>Team</th><th>PTS</th><th>AST</th><th>STL</th><th>REB</th><th>BLK</th><th>TO</th><th>FG%</th><th>FT%</th><th>3PM</th></tr></thead><tbody id="owner-player-body"></tbody></table></div>
           </div>
+          <div class="owner-tab-panel" data-owner-panel="history" role="tabpanel" hidden>
+            <div class="section-title">
+              <h2>Draft History</h2>
+              <div class="section-actions">
+                <span id="history-count" class="pill">Loading</span>
+                <button id="history-refresh" class="secondary compact-file-button" type="button">Refresh</button>
+              </div>
+            </div>
+            <p class="pick-map-note">Every change to the draft is saved here, newest first. Restore puts the whole draft back the way it was at that moment, for everyone. A restore is saved as a new version, so you can undo it from this list too.</p>
+            <div id="history-list" class="history-list"></div>
+          </div>
           <div class="owner-tab-panel" data-owner-panel="roster" role="tabpanel" hidden>
             <div class="section-title owner-roster-title">
               <h2>Roster</h2>
@@ -186,6 +219,6 @@
       </section>
     </main>
 
-    <script src="app.js?v=draft-hq-3"></script>
+    <script src="app.js?v=draft-hq-8"></script>
   </body>
 </html>

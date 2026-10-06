@@ -10,3 +10,5 @@ build/
 data/draft-state.json
 data/draft-state.json.tmp
 data/backups/
+data/draft-history.json
+data/draft-history.json.tmp

@@ -128,7 +128,18 @@ Transaction-list format is also supported:
 - `to_owner`
 - `to_round` for swaps
 
+For multi-pick trades, list several rounds in one cell separated by semicolons, for example `swap,Luis,4;6;8;10,Daniel,2` for a 4-for-1. In the app, the **Trades** tab lets you tap any number of picks on each side, including picks an owner previously acquired.
+
 Importing trades appends to the current trade list, so live draft-night trades can still be added manually with **Add Trade**. A root-level `trades.csv` is loaded automatically on startup as baseline trades; manual trades added in the browser are preserved across refreshes.
+
+## Undo and draft history
+
+Open Luis's page (`?team=Luis`) for the admin tools:
+
+- **Undo Pick N** removes the most recent pick. The player goes back in the pool and that owner is on the clock again.
+- **History** lists every saved version of the draft, newest first, with a label like `Pick 37: Luis took ...` or `Trade added: ...`. **Restore** puts the whole draft back to that moment for everyone. A restore is saved as a new version, so it can be undone too.
+
+History is stored next to the draft state (a `draft_state_history` table in Postgres, or `data/draft-history.json` without a database). It keeps the last 300 versions and leaves out the player list to keep each copy small; restores reuse the current player list. Repeated edits of the same kind within two minutes (like typing keeper names) are merged into one entry. History only works when the app is served by `server.js`.
 
 ## Offline draft flow
 
