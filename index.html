@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Fantasy Basketball Draft</title>
-    <link rel="stylesheet" href="styles.css?v=draft-hq-10">
+    <link rel="stylesheet" href="styles.css?v=draft-hq-11">
   </head>
   <body>
     <header class="topbar">
@@ -176,6 +176,7 @@
             <button class="owner-tab is-active" type="button" role="tab" aria-selected="true" data-owner-tab="board">Live Board</button>
             <button class="owner-tab" type="button" role="tab" aria-selected="false" data-owner-tab="pool">Player Pool</button>
             <button class="owner-tab" type="button" role="tab" aria-selected="false" data-owner-tab="roster">Roster</button>
+            <button id="owner-league-tab" class="owner-tab" type="button" role="tab" aria-selected="false" data-owner-tab="league" hidden>League</button>
             <button id="owner-history-tab" class="owner-tab" type="button" role="tab" aria-selected="false" data-owner-tab="history" hidden>History</button>
           </div>
           <div class="owner-tab-panel" data-owner-panel="board" role="tabpanel">
@@ -207,6 +208,29 @@
             </div>
             <div class="table-wrap"><table><thead><tr><th>Draft</th><th>Flag</th><th>ADP</th><th>Player</th><th>Pos</th><th>Team</th><th>PTS</th><th>AST</th><th>STL</th><th>REB</th><th>BLK</th><th>TO</th><th>FG%</th><th>FT%</th><th>3PM</th><th class="total-col">Total</th></tr></thead><tbody id="owner-player-body"></tbody></table></div>
           </div>
+          <div class="owner-tab-panel league-panel" data-owner-panel="league" role="tabpanel" hidden>
+            <div class="section-title"><h2>Team Output</h2><span class="pill">Per game</span></div>
+            <p class="pick-map-note">Each roster's projected per-game output, keepers included. Counting stats are added up; FG% and FT% are total makes divided by total attempts (hover to see them). Updates live as picks come in.</p>
+            <div class="table-wrap"><table id="league-output"></table></div>
+
+            <div class="section-title"><h2>Category Ranks</h2><span class="pill">1 = best</span></div>
+            <div class="table-wrap"><table id="league-ranks"></table></div>
+
+            <div class="section-title"><h2>Matchups</h2><span class="pill">Row team vs column team</span></div>
+            <p class="pick-map-note">Each cell is the row team's category record against the column team (wins-losses-ties, 9 categories, lower TO wins). Green = row team wins the matchup. Click a cell to see the breakdown below.</p>
+            <div class="table-wrap"><table id="league-matrix" class="league-matrix"></table></div>
+
+            <div class="section-title league-h2h-title">
+              <h2>Head to Head</h2>
+              <div class="league-h2h-picks">
+                <select id="league-h2h-a" aria-label="First team"></select>
+                <span>vs</span>
+                <select id="league-h2h-b" aria-label="Second team"></select>
+              </div>
+            </div>
+            <p id="league-h2h-result" class="league-h2h-result"></p>
+            <div class="table-wrap"><table id="league-h2h"></table></div>
+          </div>
           <div class="owner-tab-panel" data-owner-panel="history" role="tabpanel" hidden>
             <div class="section-title">
               <h2>Draft History</h2>
@@ -236,6 +260,6 @@
       </section>
     </main>
 
-    <script src="app.js?v=draft-hq-10"></script>
+    <script src="app.js?v=draft-hq-11"></script>
   </body>
 </html>

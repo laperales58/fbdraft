@@ -158,6 +158,14 @@ const els = {
   ownerAdminUndo: document.querySelector("#owner-admin-undo"),
   ownerAdminHistory: document.querySelector("#owner-admin-history"),
   ownerHistoryTab: document.querySelector("#owner-history-tab"),
+  ownerLeagueTab: document.querySelector("#owner-league-tab"),
+  leagueOutput: document.querySelector("#league-output"),
+  leagueRanks: document.querySelector("#league-ranks"),
+  leagueMatrix: document.querySelector("#league-matrix"),
+  leagueH2hA: document.querySelector("#league-h2h-a"),
+  leagueH2hB: document.querySelector("#league-h2h-b"),
+  leagueH2h: document.querySelector("#league-h2h"),
+  leagueH2hResult: document.querySelector("#league-h2h-result"),
   historyCount: document.querySelector("#history-count"),
   historyRefresh: document.querySelector("#history-refresh"),
   historyList: document.querySelector("#history-list"),
@@ -384,6 +392,12 @@ function csvRecords(text) {
   return rows.map((row) => Object.fromEntries(headers.map((header, i) => [header, row[i] == null ? "" : row[i]])));
 }
 
+// "0.574(10.5/18.3)" -> { fgm: 10.5, fga: 18.3 }. Used to weight team FG%/FT%.
+function makesAttempts(prefix, value) {
+  const match = normalize(value).match(/\(\s*([\d.]+)\s*\/\s*([\d.]+)\s*\)/);
+  return match ? { [prefix + "m"]: Number(match[1]) || 0, [prefix + "a"]: Number(match[2]) || 0 } : {};
+}
+
 function playerFromRecord(record, index) {
   const player = normalize(readColumn(record, ["player", "name", "player name"]));
   return {
@@ -402,7 +416,9 @@ function playerFromRecord(record, index) {
     fg_pct: toNumber(readColumn(record, ["fg_pct", "fg%", "fg"])),
     ft_pct: toNumber(readColumn(record, ["ft_pct", "ft%", "ft"])),
     to: toNumber(readColumn(record, ["to", "turnovers", "tov"])),
-    nbaId: normalize(readColumn(record, ["nba_id", "nba id", "nbaid", "player_id", "person_id"]))
+    nbaId: normalize(readColumn(record, ["nba_id", "nba id", "nbaid", "player_id", "person_id"])),
+    ...makesAttempts("fg", readColumn(record, ["fg_pct", "fg%", "fg"])),
+    ...makesAttempts("ft", readColumn(record, ["ft_pct", "ft%", "ft"]))
   };
 }
 
@@ -512,6 +528,8 @@ function keeperForScheduleIndex(schedule, index) {
     playerId: player ? player.id : "keeper-" + slot.ownerId + "-" + ownerSlotCount,
     player: keeperName,
     nbaId: player ? player.nbaId : "",
+    fgm: player ? player.fgm : 0, fga: player ? player.fga : 0,
+    ftm: player ? player.ftm : 0, fta: player ? player.fta : 0,
     team: player ? player.team : "",
     pos: player ? player.pos : "Keeper",
     rank: player ? player.rank : "",
@@ -1162,9 +1180,168 @@ function renderOwnerDraftBoard(ownerId) {
   fitPlayerNames(els.ownerDraftBoard);
 }
 
+// ---- League tools (Luis's page) ----------------------------------------
+// Team output = each roster's per-game projection: counting stats are summed,
+// FG%/FT% are total makes / total attempts. Teams are compared category by
+// category, 9-cat head-to-head style (lower TO wins).
+const LEAGUE_CATS = [
+  { key: "fg_pct", label: "FG%", pct: true },
+  { key: "ft_pct", label: "FT%", pct: true },
+  { key: "threepm", label: "3PM" },
+  { key: "pts", label: "PTS" },
+  { key: "reb", label: "REB" },
+  { key: "ast", label: "AST" },
+  { key: "stl", label: "STL" },
+  { key: "blk", label: "BLK" },
+  { key: "to", label: "TO", lowerWins: true }
+];
+let leagueH2hPair = null;
+
+function teamOutput(owner) {
+  const roster = teamPlayers(owner.id);
+  const out = { owner, players: roster.length, pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, to: 0, threepm: 0 };
+  let fgm = 0, fga = 0, ftm = 0, fta = 0, fgSum = 0, fgCount = 0, ftSum = 0, ftCount = 0;
+  for (const player of roster) {
+    for (const stat of ["pts", "reb", "ast", "stl", "blk", "to", "threepm"]) out[stat] += Number(player[stat]) || 0;
+    fgm += Number(player.fgm) || 0; fga += Number(player.fga) || 0;
+    ftm += Number(player.ftm) || 0; fta += Number(player.fta) || 0;
+    if (player.fg_pct) { fgSum += Number(player.fg_pct); fgCount += 1; }
+    if (player.ft_pct) { ftSum += Number(player.ft_pct); ftCount += 1; }
+  }
+  // Fall back to a simple average if the player list has no makes/attempts.
+  out.fg_pct = fga ? fgm / fga : (fgCount ? fgSum / fgCount : 0);
+  out.ft_pct = fta ? ftm / fta : (ftCount ? ftSum / ftCount : 0);
+  out.fgm = fgm; out.fga = fga; out.ftm = ftm; out.fta = fta;
+  return out;
+}
+
+function catValue(team, cat) {
+  return Math.round((team[cat.key] || 0) * (cat.pct ? 10000 : 100));
+}
+
+function compareTeams(a, b) {
+  const result = { wins: 0, losses: 0, ties: 0, cats: [] };
+  for (const cat of LEAGUE_CATS) {
+    const av = catValue(a, cat), bv = catValue(b, cat);
+    let edge = 0;
+    if (av !== bv) edge = (cat.lowerWins ? av < bv : av > bv) ? 1 : -1;
+    if (edge > 0) result.wins += 1; else if (edge < 0) result.losses += 1; else result.ties += 1;
+    result.cats.push(edge);
+  }
+  return result;
+}
+
+function categoryRanks(teams) {
+  const ranks = new Map(teams.map((team) => [team.owner.id, {}]));
+  for (const cat of LEAGUE_CATS) {
+    const sorted = teams.slice().sort((a, b) => cat.lowerWins ? catValue(a, cat) - catValue(b, cat) : catValue(b, cat) - catValue(a, cat));
+    sorted.forEach((team, index) => {
+      const prev = sorted[index - 1];
+      const rank = prev && catValue(prev, cat) === catValue(team, cat) ? ranks.get(prev.owner.id)[cat.key] : index + 1;
+      ranks.get(team.owner.id)[cat.key] = rank;
+    });
+  }
+  for (const [, r] of ranks) r.avg = LEAGUE_CATS.reduce((sum, cat) => sum + r[cat.key], 0) / LEAGUE_CATS.length;
+  return ranks;
+}
+
+function fmtCat(team, cat) {
+  const value = team[cat.key] || 0;
+  return cat.pct ? value.toFixed(3).replace(/^0/, "") : value.toFixed(1);
+}
+
+function rankStyle(rank, count) {
+  // 1st = green, last = red, soft tint so text stays readable.
+  const t = count > 1 ? (rank - 1) / (count - 1) : 0;
+  const hue = Math.round(140 - 140 * t);
+  return " style=\"background: hsl(" + hue + " 65% 88%)\"";
+}
+
+function recordText(r) {
+  return r.wins + "-" + r.losses + (r.ties ? "-" + r.ties : "");
+}
+
+function renderLeagueTools(myOwnerId) {
+  if (!els.leagueOutput) return;
+  const teams = state.owners.map(teamOutput);
+  const count = teams.length;
+  const ranks = categoryRanks(teams);
+  const mine = (team) => team.owner.id === myOwnerId ? " class=\"league-mine\"" : "";
+  const catHeads = LEAGUE_CATS.map((cat) => "<th>" + cat.label + "</th>").join("");
+
+  // Head-to-head record of every team against every other team.
+  const records = new Map(teams.map((team) => [team.owner.id, { mw: 0, ml: 0, mt: 0, cw: 0, cl: 0, ct: 0 }]));
+  const grid = new Map();
+  for (const a of teams) {
+    for (const b of teams) {
+      if (a === b) continue;
+      const r = compareTeams(a, b);
+      grid.set(a.owner.id + "|" + b.owner.id, r);
+      const rec = records.get(a.owner.id);
+      rec.cw += r.wins; rec.cl += r.losses; rec.ct += r.ties;
+      if (r.wins > r.losses) rec.mw += 1; else if (r.wins < r.losses) rec.ml += 1; else rec.mt += 1;
+    }
+  }
+
+  // 1) Team output
+  const byOutput = teams.slice().sort((a, b) => ranks.get(a.owner.id).avg - ranks.get(b.owner.id).avg);
+  els.leagueOutput.innerHTML = "<thead><tr><th>Team</th><th>Players</th>" + catHeads + "</tr></thead><tbody>" + byOutput.map((team) =>
+    "<tr" + mine(team) + "><td><strong>" + escapeHtml(team.owner.owner) + "</strong></td><td>" + team.players + "</td>" +
+    LEAGUE_CATS.map((cat) => "<td" + (cat.pct && team.fga ? " title=\"" + (cat.key === "fg_pct" ? team.fgm.toFixed(1) + "/" + team.fga.toFixed(1) : team.ftm.toFixed(1) + "/" + team.fta.toFixed(1)) + "\"" : "") + ">" + fmtCat(team, cat) + "</td>").join("") + "</tr>").join("") + "</tbody>";
+
+  // 2) Category ranks
+  els.leagueRanks.innerHTML = "<thead><tr><th>Team</th>" + catHeads + "<th>Avg Rank</th></tr></thead><tbody>" + byOutput.map((team) => {
+    const r = ranks.get(team.owner.id);
+    return "<tr" + mine(team) + "><td><strong>" + escapeHtml(team.owner.owner) + "</strong></td>" +
+      LEAGUE_CATS.map((cat) => "<td class=\"league-rank\"" + rankStyle(r[cat.key], count) + ">" + r[cat.key] + "</td>").join("") +
+      "<td><strong>" + r.avg.toFixed(1) + "</strong></td></tr>";
+  }).join("") + "</tbody>";
+
+  // 3) Matchup grid, best record first
+  const byRecord = teams.slice().sort((a, b) => {
+    const ra = records.get(a.owner.id), rb = records.get(b.owner.id);
+    return (rb.mw + rb.mt / 2) - (ra.mw + ra.mt / 2) || (rb.cw - rb.cl) - (ra.cw - ra.cl);
+  });
+  els.leagueMatrix.innerHTML = "<thead><tr><th>Team \\ vs</th>" + byRecord.map((team) => "<th>" + escapeHtml(team.owner.owner) + "</th>").join("") + "<th>Matchups</th><th>Cats</th></tr></thead><tbody>" +
+    byRecord.map((a) => {
+      const rec = records.get(a.owner.id);
+      return "<tr" + mine(a) + "><td><strong>" + escapeHtml(a.owner.owner) + "</strong></td>" + byRecord.map((b) => {
+        if (a === b) return "<td class=\"league-cell self\">&mdash;</td>";
+        const r = grid.get(a.owner.id + "|" + b.owner.id);
+        const cls = r.wins > r.losses ? "win" : r.wins < r.losses ? "loss" : "tie";
+        return "<td class=\"league-cell " + cls + "\" data-a=\"" + a.owner.id + "\" data-b=\"" + b.owner.id + "\" title=\"" + escapeHtml(a.owner.owner + " vs " + b.owner.owner + ": " + recordText(r)) + "\">" + recordText(r) + "</td>";
+      }).join("") + "<td><strong>" + rec.mw + "-" + rec.ml + (rec.mt ? "-" + rec.mt : "") + "</strong></td><td>" + rec.cw + "-" + rec.cl + (rec.ct ? "-" + rec.ct : "") + "</td></tr>";
+    }).join("") + "</tbody>";
+
+  // 4) Head to head detail
+  const ids = state.owners.map((owner) => owner.id);
+  if (!leagueH2hPair || !ids.includes(leagueH2hPair[0]) || !ids.includes(leagueH2hPair[1])) {
+    leagueH2hPair = [myOwnerId, ids.find((id) => id !== myOwnerId)];
+  }
+  els.leagueH2hA.innerHTML = ownerOptions(leagueH2hPair[0]);
+  els.leagueH2hB.innerHTML = ownerOptions(leagueH2hPair[1]);
+  els.leagueH2hA.value = leagueH2hPair[0];
+  els.leagueH2hB.value = leagueH2hPair[1];
+  const a = teams.find((team) => team.owner.id === leagueH2hPair[0]);
+  const b = teams.find((team) => team.owner.id === leagueH2hPair[1]);
+  if (a === b) {
+    els.leagueH2h.innerHTML = "";
+    els.leagueH2hResult.textContent = "Pick two different teams.";
+    return;
+  }
+  const r = compareTeams(a, b);
+  els.leagueH2h.innerHTML = "<thead><tr><th>Category</th><th>" + escapeHtml(a.owner.owner) + "</th><th>" + escapeHtml(b.owner.owner) + "</th><th>Edge</th></tr></thead><tbody>" +
+    LEAGUE_CATS.map((cat, i) => {
+      const edge = r.cats[i];
+      return "<tr><td><strong>" + cat.label + "</strong>" + (cat.lowerWins ? " <span class=\"league-note\">(lower wins)</span>" : "") + "</td><td class=\"" + (edge > 0 ? "h2h-win" : "") + "\">" + fmtCat(a, cat) + "</td><td class=\"" + (edge < 0 ? "h2h-win" : "") + "\">" + fmtCat(b, cat) + "</td><td>" + (edge > 0 ? escapeHtml(a.owner.owner) : edge < 0 ? escapeHtml(b.owner.owner) : "Tie") + "</td></tr>";
+    }).join("") + "</tbody>";
+  const verdict = r.wins > r.losses ? a.owner.owner + " wins " : r.wins < r.losses ? b.owner.owner + " wins " : "Tied ";
+  els.leagueH2hResult.textContent = verdict + Math.max(r.wins, r.losses) + "-" + Math.min(r.wins, r.losses) + (r.ties ? "-" + r.ties : "");
+}
+
 function setOwnerTab(tab) {
   const owner = ownerFromUrl();
-  const allowed = ["board", "pool", "roster"].concat(owner && ownerHasAdminPowers(owner) ? ["history"] : []);
+  const allowed = ["board", "pool", "roster"].concat(owner && ownerHasAdminPowers(owner) ? ["league", "history"] : []);
   const previous = activeOwnerTab;
   activeOwnerTab = allowed.includes(tab) ? tab : "board";
   if (activeOwnerTab === "history" && (previous !== "history" || historyEntries === null)) loadHistory();
@@ -1401,7 +1578,11 @@ function renderOwnerPage() {
   const isAdmin = ownerHasAdminPowers(owner);
   els.ownerAdminPanel.hidden = !isAdmin;
   els.ownerHistoryTab.hidden = !isAdmin;
-  if (isAdmin) renderAdminUndo();
+  els.ownerLeagueTab.hidden = !isAdmin;
+  if (isAdmin) {
+    renderAdminUndo();
+    renderLeagueTools(owner.id);
+  }
   els.ownerPageSummary.hidden = false;
   els.ownerClockPanel.hidden = false;
   document.querySelector(".owner-tab-shell").hidden = false;
@@ -1590,6 +1771,16 @@ els.ownerPlayerBody.addEventListener("click", (event) => {
 });
 els.ownerHome.addEventListener("click", goToDraftRoom);
 els.ownerAdminHome.addEventListener("click", goToDraftRoom);
+els.leagueH2hA.addEventListener("change", () => { leagueH2hPair = [els.leagueH2hA.value, els.leagueH2hB.value]; renderOwnerPage(); });
+els.leagueH2hB.addEventListener("change", () => { leagueH2hPair = [els.leagueH2hA.value, els.leagueH2hB.value]; renderOwnerPage(); });
+// Click a matchup cell to open it in the head-to-head view.
+els.leagueMatrix.addEventListener("click", (event) => {
+  const cell = event.target.closest("td[data-a]");
+  if (!cell) return;
+  leagueH2hPair = [cell.dataset.a, cell.dataset.b];
+  renderOwnerPage();
+  els.leagueH2h.scrollIntoView({ behavior: "smooth", block: "center" });
+});
 els.adminLoginForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const button = els.adminLoginForm.querySelector("button[type=submit]");
