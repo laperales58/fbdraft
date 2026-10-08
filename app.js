@@ -17,6 +17,108 @@ let historyEntries = null;
 let historyError = "";
 let historyLoading = false;
 
+// ---- Admin login ----
+// The server checks the password (ADMIN_PASSWORD env var) and hands back a token,
+// which this browser remembers so Luis stays logged in.
+const ADMIN_TOKEN_KEY = "fbdraftAdminToken";
+let adminRequired = false;
+let adminSession = false;
+
+function readAdminToken() {
+  try { return localStorage.getItem(ADMIN_TOKEN_KEY) || ""; } catch (error) { return ""; }
+}
+
+function writeAdminToken(token) {
+  try {
+    if (token) localStorage.setItem(ADMIN_TOKEN_KEY, token);
+    else localStorage.removeItem(ADMIN_TOKEN_KEY);
+  } catch (error) {
+    // Private browsing: the login just won't be remembered.
+  }
+}
+
+function adminHeaders(extra = {}) {
+  const token = readAdminToken();
+  return token ? { ...extra, "X-Admin-Token": token } : extra;
+}
+
+function isAdminUnlocked() {
+  return !adminRequired || adminSession;
+}
+
+async function checkAdminStatus() {
+  try {
+    const response = await fetch("/api/admin/status", { cache: "no-store", headers: adminHeaders() });
+    if (!response.ok) return;
+    const payload = await response.json();
+    adminRequired = Boolean(payload.required);
+    adminSession = Boolean(payload.admin);
+    if (adminRequired && !adminSession) writeAdminToken("");
+  } catch (error) {
+    // No server (local file mode): nothing to lock.
+  }
+}
+
+async function adminLogin(password) {
+  const response = await fetch("/api/admin/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ password })
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error || "Could not log in.");
+  writeAdminToken(payload.token || "");
+  adminSession = true;
+}
+
+function adminLogout() {
+  writeAdminToken("");
+  adminSession = false;
+  historyEntries = null;
+  render();
+}
+
+// The Draft Room and Luis's page are admin pages; other owners' pages stay open.
+function pageNeedsAdmin() {
+  const owner = ownerFromUrl();
+  return !owner || key(owner.owner) === key(ADMIN_OWNER_NAME);
+}
+
+function renderAdminGate() {
+  const locked = adminRequired && !adminSession && pageNeedsAdmin();
+  document.body.classList.toggle("admin-locked", locked);
+  els.adminGate.hidden = !locked;
+  if (els.adminLogout) els.adminLogout.hidden = !(adminRequired && adminSession);
+  if (locked) {
+    els.adminGateOwners.innerHTML = state.owners.filter((owner) => key(owner.owner) !== key(ADMIN_OWNER_NAME))
+      .map((owner) => "<a href=\"?team=" + encodeURIComponent(owner.owner) + "\">" + escapeHtml(owner.owner) + "</a>").join("");
+  }
+  return locked;
+}
+
+// Total value is only shown to the admin.
+function showTotals() {
+  return isAdminUnlocked();
+}
+
+// Adds/removes the "Sort by Total" choice on the owner page.
+function syncTotalSortOption() {
+  const existing = els.ownerSort.querySelector("option[value=\"total\"]");
+  if (showTotals() && !existing) {
+    const option = document.createElement("option");
+    option.value = "total";
+    option.textContent = "Sort by Total";
+    els.ownerSort.insertBefore(option, els.ownerSort.options[1] || null);
+  } else if (!showTotals() && existing) {
+    if (els.ownerSort.value === "total") els.ownerSort.value = "rank";
+    existing.remove();
+  }
+}
+
+function totalCellHtml(player) {
+  return showTotals() ? "<td><strong>" + (Number(player.total) || 0).toFixed(2) + "</strong></td>" : "";
+}
+
 function makeOwner(name, index) {
   return { id: "owner-" + (index + 1), owner: name, team: name };
 }
@@ -66,6 +168,13 @@ const els = {
   setupTabs: document.querySelector("#setup-tabs"),
   ownerPlayerSearch: document.querySelector("#owner-player-search"),
   ownerSort: document.querySelector("#owner-sort"),
+  adminGate: document.querySelector("#admin-gate"),
+  adminLoginForm: document.querySelector("#admin-login-form"),
+  adminPassword: document.querySelector("#admin-password"),
+  adminLoginError: document.querySelector("#admin-login-error"),
+  adminGateOwners: document.querySelector("#admin-gate-owners"),
+  adminLogout: document.querySelector("#admin-logout"),
+  ownerAdminLogout: document.querySelector("#owner-admin-logout"),
   ownerFlagFilter: document.querySelector("#owner-flag-filter"),
   ownerClockPanel: document.querySelector("#owner-clock-panel"),
   ownerBoardCount: document.querySelector("#owner-board-count"),
@@ -1097,7 +1206,7 @@ function renderOwnerRoster(defaultOwnerId) {
   els.ownerRosterCount.textContent = roster.length + " player" + (roster.length === 1 ? "" : "s");
   els.ownerRosterBody.innerHTML = roster.length ? roster.map((player) => {
     const pickLabel = player.keeper ? "K" : (player.pickIndex == null ? "-" : "Pick " + (player.pickIndex + 1));
-    return "<tr><td>" + pickLabel + "</td><td>" + escapeHtml(player.player) + (player.keeper ? " <strong>(K)</strong>" : "") + "</td><td>" + escapeHtml(player.pos) + "</td><td>" + escapeHtml(player.team) + "</td><td>" + statText(player, "pts") + "</td><td>" + statText(player, "ast") + "</td><td>" + statText(player, "stl") + "</td><td>" + statText(player, "reb") + "</td><td>" + statText(player, "blk") + "</td><td>" + statText(player, "to") + "</td><td>" + statText(player, "fg_pct", 3) + "</td><td>" + statText(player, "ft_pct", 3) + "</td><td>" + statText(player, "threepm") + "</td></tr>";
+    return "<tr><td>" + pickLabel + "</td><td>" + escapeHtml(player.player) + (player.keeper ? " <strong>(K)</strong>" : "") + "</td><td>" + escapeHtml(player.pos) + "</td><td>" + escapeHtml(player.team) + "</td><td>" + statText(player, "pts") + "</td><td>" + statText(player, "ast") + "</td><td>" + statText(player, "stl") + "</td><td>" + statText(player, "reb") + "</td><td>" + statText(player, "blk") + "</td><td>" + statText(player, "to") + "</td><td>" + statText(player, "fg_pct", 3) + "</td><td>" + statText(player, "ft_pct", 3) + "</td><td>" + statText(player, "threepm") + "</td>" + totalCellHtml(player) + "</tr>";
   }).join("") : "<tr><td class=\"empty-state\" colspan=\"13\">No players drafted yet.</td></tr>";
 }
 
@@ -1119,7 +1228,7 @@ function renderPlayers() {
   const players = availablePlayers();
   els.playerCount.textContent = players.length + " available";
   els.availablePlayers.innerHTML = players.slice(0, 300).map((player) => "<option value=\"" + escapeHtml(player.player) + "\"></option>").join("");
-  els.playersBody.innerHTML = players.length ? players.slice(0, 300).map((player) => "<tr><td>" + (player.rank || "") + "</td><td>" + escapeHtml(player.player) + "</td><td>" + escapeHtml(player.pos) + "</td><td>" + escapeHtml(player.team) + "</td><td>" + player.pts.toFixed(1) + "</td><td>" + player.ast.toFixed(1) + "</td><td>" + player.stl.toFixed(1) + "</td><td>" + player.reb.toFixed(1) + "</td><td>" + player.blk.toFixed(1) + "</td><td>" + player.to.toFixed(1) + "</td><td>" + player.fg_pct.toFixed(3) + "</td><td>" + player.ft_pct.toFixed(3) + "</td><td>" + player.threepm.toFixed(1) + "</td></tr>").join("") : "<tr><td class=\"empty-state\" colspan=\"13\">Import a player CSV to fill the board.</td></tr>";
+  els.playersBody.innerHTML = players.length ? players.slice(0, 300).map((player) => "<tr><td>" + (player.rank || "") + "</td><td>" + escapeHtml(player.player) + "</td><td>" + escapeHtml(player.pos) + "</td><td>" + escapeHtml(player.team) + "</td><td>" + player.pts.toFixed(1) + "</td><td>" + player.ast.toFixed(1) + "</td><td>" + player.stl.toFixed(1) + "</td><td>" + player.reb.toFixed(1) + "</td><td>" + player.blk.toFixed(1) + "</td><td>" + player.to.toFixed(1) + "</td><td>" + player.fg_pct.toFixed(3) + "</td><td>" + player.ft_pct.toFixed(3) + "</td><td>" + player.threepm.toFixed(1) + "</td>" + totalCellHtml(player) + "</tr>").join("") : "<tr><td class=\"empty-state\" colspan=\"13\">Import a player CSV to fill the board.</td></tr>";
 }
 
 function lastDraftedPick() {
@@ -1170,7 +1279,7 @@ async function loadHistory() {
   if (historyLoading) return;
   historyLoading = true;
   try {
-    const response = await fetch("/api/history", { cache: "no-store" });
+    const response = await fetch("/api/history", { cache: "no-store", headers: adminHeaders() });
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error || "Could not load history.");
     historyEntries = payload.entries || [];
@@ -1217,7 +1326,7 @@ async function restoreHistory(id) {
   try {
     const response = await fetch("/api/history/" + id + "/restore", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: adminHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ label: "Restored to " + when.time + ": " + entry.label })
     });
     const payload = await response.json();
@@ -1241,7 +1350,7 @@ function ownerFromUrl() {
 }
 
 function ownerHasAdminPowers(owner) {
-  return owner && key(owner.owner) === key(ADMIN_OWNER_NAME);
+  return Boolean(owner && key(owner.owner) === key(ADMIN_OWNER_NAME) && isAdminUnlocked());
 }
 
 function goToDraftRoom() {
@@ -1327,7 +1436,7 @@ function renderOwnerPage() {
   renderOwnerRoster(owner.id);
   els.ownerPlayerBody.innerHTML = players.length ? players.slice(0, 500).map((player) => {
     const flagged = flags.has(player.id);
-    return "<tr><td><button class=\"draft-player-button\" type=\"button\" data-player-name=\"" + escapeHtml(player.player) + "\"" + (onClock ? "" : " disabled") + ">Draft</button></td><td><button class=\"flag-button" + (flagged ? " flagged" : "") + "\" type=\"button\" data-player-id=\"" + escapeHtml(player.id) + "\">" + (flagged ? "*" : "+") + "</button></td><td>" + (player.rank || "") + "</td><td>" + escapeHtml(player.player) + "</td><td>" + escapeHtml(player.pos) + "</td><td>" + escapeHtml(player.team) + "</td><td>" + player.pts.toFixed(1) + "</td><td>" + player.ast.toFixed(1) + "</td><td>" + player.stl.toFixed(1) + "</td><td>" + player.reb.toFixed(1) + "</td><td>" + player.blk.toFixed(1) + "</td><td>" + player.to.toFixed(1) + "</td><td>" + player.fg_pct.toFixed(3) + "</td><td>" + player.ft_pct.toFixed(3) + "</td><td>" + player.threepm.toFixed(1) + "</td></tr>";
+    return "<tr><td><button class=\"draft-player-button\" type=\"button\" data-player-name=\"" + escapeHtml(player.player) + "\"" + (onClock ? "" : " disabled") + ">Draft</button></td><td><button class=\"flag-button" + (flagged ? " flagged" : "") + "\" type=\"button\" data-player-id=\"" + escapeHtml(player.id) + "\">" + (flagged ? "*" : "+") + "</button></td><td>" + (player.rank || "") + "</td><td>" + escapeHtml(player.player) + "</td><td>" + escapeHtml(player.pos) + "</td><td>" + escapeHtml(player.team) + "</td><td>" + player.pts.toFixed(1) + "</td><td>" + player.ast.toFixed(1) + "</td><td>" + player.stl.toFixed(1) + "</td><td>" + player.reb.toFixed(1) + "</td><td>" + player.blk.toFixed(1) + "</td><td>" + player.to.toFixed(1) + "</td><td>" + player.fg_pct.toFixed(3) + "</td><td>" + player.ft_pct.toFixed(3) + "</td><td>" + player.threepm.toFixed(1) + "</td>" + totalCellHtml(player) + "</tr>";
   }).join("") : "<tr><td class=\"empty-state\" colspan=\"15\">No available players match this view.</td></tr>";
   setOwnerTab(activeOwnerTab);
 }
@@ -1364,6 +1473,7 @@ async function loadDefaultCsv() {
 
 async function initializeApp() {
   loadHeadshotIds();
+  await checkAdminStatus();
   const loadedServerState = await loadServerState();
   if (loadedServerState && state.players.length) {
     render();
@@ -1378,6 +1488,9 @@ function render() {
   state.owners = defaultOwners;
   state.keepers = normalizeKeepers(state.keepers || {});
   document.body.classList.toggle("draft-started", Boolean(state.draftStarted));
+  document.body.classList.toggle("show-totals", showTotals());
+  renderAdminGate();
+  syncTotalSortOption();
   renderTeamLinks();
   renderDraftOrder();
   renderKeepers();
@@ -1477,6 +1590,23 @@ els.ownerPlayerBody.addEventListener("click", (event) => {
 });
 els.ownerHome.addEventListener("click", goToDraftRoom);
 els.ownerAdminHome.addEventListener("click", goToDraftRoom);
+els.adminLoginForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const button = els.adminLoginForm.querySelector("button[type=submit]");
+  els.adminLoginError.textContent = "";
+  button.disabled = true;
+  try {
+    await adminLogin(els.adminPassword.value);
+    els.adminPassword.value = "";
+    render();
+  } catch (error) {
+    els.adminLoginError.textContent = error.message || "Could not log in.";
+    els.adminPassword.select();
+  }
+  button.disabled = false;
+});
+if (els.adminLogout) els.adminLogout.addEventListener("click", adminLogout);
+if (els.ownerAdminLogout) els.ownerAdminLogout.addEventListener("click", adminLogout);
 els.ownerAdminReset.addEventListener("click", resetDraftPicks);
 els.ownerAdminUndo.addEventListener("click", undoLastPick);
 els.ownerAdminHistory.addEventListener("click", () => { setOwnerTab("history"); });

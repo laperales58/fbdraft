@@ -1,4 +1,5 @@
 const http = require("http");
+const crypto = require("crypto");
 const fs = require("fs");
 const fsp = require("fs/promises");
 const path = require("path");
@@ -14,6 +15,29 @@ const HISTORY_MERGE_MS = 2 * 60 * 1000;
 const backupDir = path.join(dataDir, "backups");
 const usePostgres = Boolean(process.env.DATABASE_URL);
 const postgresStateId = process.env.DRAFT_STATE_ID || "main";
+
+// ---------- Admin password ----------
+// Set ADMIN_PASSWORD in Render's environment settings (never commit it to the repo).
+// When it is not set (e.g. running locally), admin pages are open.
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "";
+
+function sha256(value) {
+  return crypto.createHash("sha256").update(String(value)).digest();
+}
+
+function adminToken() {
+  return crypto.createHmac("sha256", ADMIN_PASSWORD).update("fbdraft-admin-v1").digest("hex");
+}
+
+function isAdminRequest(req) {
+  if (!ADMIN_PASSWORD) return true;
+  const token = String(req.headers["x-admin-token"] || "");
+  return crypto.timingSafeEqual(sha256(token), sha256(adminToken()));
+}
+
+function passwordMatches(password) {
+  return Boolean(ADMIN_PASSWORD) && crypto.timingSafeEqual(sha256(password), sha256(ADMIN_PASSWORD));
+}
 
 const contentTypes = {
   ".html": "text/html; charset=utf-8",
@@ -331,6 +355,37 @@ function readBody(req) {
 
 async function handleApi(req, res) {
   const pathname = new URL(req.url, "http://localhost").pathname;
+
+  if (pathname === "/api/admin/status" && req.method === "GET") {
+    sendJson(res, 200, { required: Boolean(ADMIN_PASSWORD), admin: isAdminRequest(req) });
+    return;
+  }
+
+  if (pathname === "/api/admin/login" && req.method === "POST") {
+    let payload = {};
+    try {
+      payload = JSON.parse((await readBody(req)) || "{}");
+    } catch (error) {
+      sendJson(res, 400, { error: "Invalid JSON body" });
+      return;
+    }
+    if (!ADMIN_PASSWORD) {
+      sendJson(res, 200, { token: "" });
+      return;
+    }
+    if (!passwordMatches(payload.password || "")) {
+      await new Promise((resolve) => setTimeout(resolve, 1000)); // slow down guessing
+      sendJson(res, 401, { error: "Wrong password." });
+      return;
+    }
+    sendJson(res, 200, { token: adminToken() });
+    return;
+  }
+
+  if (pathname.startsWith("/api/history") && !isAdminRequest(req)) {
+    sendJson(res, 401, { error: "Admin login required." });
+    return;
+  }
 
   if (pathname === "/api/history" && req.method === "GET") {
     let entries = await listHistory();

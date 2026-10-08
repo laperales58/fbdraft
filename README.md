@@ -74,6 +74,18 @@ For Render without Neon, attach a persistent disk and set:
 
 Without a persistent disk or external database, Render restarts and redeploys can wipe local server files.
 
+## Admin password
+
+The Draft Room and Luis's page are locked behind an admin password. Other owners' pages (`?team=Name`) stay open.
+
+1. In Render, open the service, go to **Environment**, and add `ADMIN_PASSWORD` with the password you want.
+2. Save; Render redeploys. Visit the site and enter the password once; the browser remembers it until you press **Log Out**.
+3. Changing `ADMIN_PASSWORD` logs out every browser.
+
+If `ADMIN_PASSWORD` is not set (for example when running locally), the admin pages are open.
+
+When logged in as admin, a **Total** column (from the CSV's `TOTAL`/`value` column) appears in the player tables, and the owner page can sort by it. Other owners don't see it on their pages, but it is still in the shared draft data and the public `players.csv`, so treat it as hidden, not secret.
+
 ## Player CSV format
 
 Use `data/players-template.csv` as a starting point. Supported columns:

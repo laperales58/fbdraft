@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Fantasy Basketball Draft</title>
-    <link rel="stylesheet" href="styles.css?v=draft-hq-9">
+    <link rel="stylesheet" href="styles.css?v=draft-hq-10">
   </head>
   <body>
     <header class="topbar">
@@ -19,8 +19,24 @@
         <button id="owner-home" class="secondary" type="button">Draft Room</button>
         <button id="edit-setup" class="secondary" type="button">Edit Setup</button>
         <button id="reset-draft" class="danger admin-only" type="button">Reset</button>
+        <button id="admin-logout" class="secondary admin-only" type="button" hidden>Log Out</button>
       </div>
     </header>
+
+    <div id="admin-gate" class="admin-gate" hidden>
+      <form id="admin-login-form" class="admin-gate-card">
+        <p class="eyebrow">Admin only</p>
+        <h2>Enter the admin password</h2>
+        <p class="admin-gate-note">The Draft Room and Luis's page are for the commissioner.</p>
+        <input id="admin-password" type="password" autocomplete="current-password" placeholder="Password" required>
+        <span id="admin-login-error" class="admin-login-error" role="alert"></span>
+        <button type="submit">Unlock</button>
+        <div class="admin-gate-owners-wrap">
+          <span>Looking for your team page?</span>
+          <div id="admin-gate-owners" class="admin-gate-owners"></div>
+        </div>
+      </form>
+    </div>
 
     <main class="layout">
       <section class="panel setup-panel" aria-labelledby="setup-title">
@@ -150,6 +166,7 @@
             <button id="owner-admin-history" class="secondary" type="button">History</button>
             <button id="owner-admin-home" class="secondary" type="button">Draft Room</button>
             <button id="owner-admin-reset" class="danger" type="button">Reset Draft</button>
+            <button id="owner-admin-logout" class="secondary" type="button">Log Out</button>
           </div>
         </div>
         <div id="owner-page-summary" class="summary-grid"></div>
@@ -188,7 +205,7 @@
                 <option value="flagged">Flagged only</option>
               </select>
             </div>
-            <div class="table-wrap"><table><thead><tr><th>Draft</th><th>Flag</th><th>ADP</th><th>Player</th><th>Pos</th><th>Team</th><th>PTS</th><th>AST</th><th>STL</th><th>REB</th><th>BLK</th><th>TO</th><th>FG%</th><th>FT%</th><th>3PM</th></tr></thead><tbody id="owner-player-body"></tbody></table></div>
+            <div class="table-wrap"><table><thead><tr><th>Draft</th><th>Flag</th><th>ADP</th><th>Player</th><th>Pos</th><th>Team</th><th>PTS</th><th>AST</th><th>STL</th><th>REB</th><th>BLK</th><th>TO</th><th>FG%</th><th>FT%</th><th>3PM</th><th class="total-col">Total</th></tr></thead><tbody id="owner-player-body"></tbody></table></div>
           </div>
           <div class="owner-tab-panel" data-owner-panel="history" role="tabpanel" hidden>
             <div class="section-title">
@@ -207,7 +224,7 @@
               <label class="dashboard-switch">Team<select id="owner-roster-select"></select></label>
               <span id="owner-roster-count" class="pill">0 players</span>
             </div>
-            <div class="table-wrap"><table><thead><tr><th>Pick</th><th>Player</th><th>Pos</th><th>Team</th><th>PTS</th><th>AST</th><th>STL</th><th>REB</th><th>BLK</th><th>TO</th><th>FG%</th><th>FT%</th><th>3PM</th></tr></thead><tbody id="owner-roster-body"></tbody></table></div>
+            <div class="table-wrap"><table><thead><tr><th>Pick</th><th>Player</th><th>Pos</th><th>Team</th><th>PTS</th><th>AST</th><th>STL</th><th>REB</th><th>BLK</th><th>TO</th><th>FG%</th><th>FT%</th><th>3PM</th><th class="total-col">Total</th></tr></thead><tbody id="owner-roster-body"></tbody></table></div>
           </div>
         </div>
       </section>
@@ -215,10 +232,10 @@
       <section class="panel players-panel" aria-labelledby="players-title">
         <div class="section-title"><h2 id="players-title">Available Players</h2><span id="player-count" class="pill">0 loaded</span></div>
         <div class="filters"><input id="search-input" type="search" placeholder="Search player, team, or position"><select id="position-filter"><option value="">All positions</option><option value="PG">PG</option><option value="SG">SG</option><option value="SF">SF</option><option value="PF">PF</option><option value="C">C</option></select></div>
-        <div class="table-wrap"><table><thead><tr><th>ADP</th><th>Player</th><th>Pos</th><th>Team</th><th>PTS</th><th>AST</th><th>STL</th><th>REB</th><th>BLK</th><th>TO</th><th>FG%</th><th>FT%</th><th>3PM</th></tr></thead><tbody id="players-body"></tbody></table></div>
+        <div class="table-wrap"><table><thead><tr><th>ADP</th><th>Player</th><th>Pos</th><th>Team</th><th>PTS</th><th>AST</th><th>STL</th><th>REB</th><th>BLK</th><th>TO</th><th>FG%</th><th>FT%</th><th>3PM</th><th class="total-col">Total</th></tr></thead><tbody id="players-body"></tbody></table></div>
       </section>
     </main>
 
-    <script src="app.js?v=draft-hq-9"></script>
+    <script src="app.js?v=draft-hq-10"></script>
   </body>
 </html>

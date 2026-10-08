@@ -223,3 +223,20 @@ body:not(.draft-started):not(.owner-page) .setup-tabs-panel {
 .history-restore { min-height: 34px; }
 @media (max-width: 720px) { .history-row { grid-template-columns: 1fr; gap: 6px; } }
 body.guest-owner-page .admin-only { display: none; }
+
+/* ---- Admin login + Total column ---- */
+body:not(.show-totals) .total-col { display: none; }
+body.admin-locked .layout, body.admin-locked .topbar .actions { display: none; }
+.admin-gate { display: grid; place-items: center; padding: 48px 16px; }
+.admin-gate[hidden] { display: none; }
+.admin-gate-card { width: min(380px, 100%); display: grid; gap: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 24px; box-shadow: var(--shadow); }
+.admin-gate-card h2 { margin: 0; }
+.admin-gate-card .eyebrow { margin: 0; }
+.admin-gate-note { margin: 0; color: var(--muted); font-size: 0.9rem; }
+.admin-gate-card input { width: 100%; }
+.admin-login-error { min-height: 1.1em; color: var(--danger); font-size: 0.85rem; font-weight: 700; }
+.admin-login-error:empty { display: none; }
+.admin-gate-owners-wrap { display: grid; gap: 6px; border-top: 1px solid var(--line); padding-top: 12px; color: var(--muted); font-size: 0.82rem; }
+.admin-gate-owners { display: flex; flex-wrap: wrap; gap: 6px; }
+.admin-gate-owners a { padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; color: var(--accent-strong); font-weight: 700; text-decoration: none; }
+body.owner-page #admin-logout { display: none; }
