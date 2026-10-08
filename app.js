@@ -313,8 +313,10 @@ function baseOwnerIdForPickIndex(index) {
   const ownerCount = order.length || 1;
   const round = Math.floor(index / ownerCount) + 1;
   const slot = index % ownerCount;
+  // Rounds 1-3 repeat the same order. Round 4 restarts at the first overall pick,
+  // then the draft snakes: R4 forward, R5 reversed, R6 forward, ...
   if (round <= 3) return order[slot];
-  return round % 2 === 0 ? order[ownerCount - 1 - slot] : order[slot];
+  return (round - 4) % 2 === 0 ? order[slot] : order[ownerCount - 1 - slot];
 }
 
 function basePickIndexFor(ownerId, round) {
@@ -741,7 +743,8 @@ function renderTrades() {
     return;
   }
   els.tradeList.innerHTML = "";
-  state.pickTrades.forEach((trade) => {
+  // Show the most recent trade first so mistakes are easy to spot and remove.
+  state.pickTrades.slice().reverse().forEach((trade) => {
     const row = document.createElement("div");
     row.className = "trade-row";
     row.innerHTML = "<div><strong>" + escapeHtml(tradeText(trade)) + "</strong><span>" + escapeHtml(tradeKindText(trade)) + "</span></div><button type=\"button\" data-trade-id=\"" + escapeHtml(trade.id) + "\">Remove</button>";
@@ -867,7 +870,9 @@ function importTrades(text, options = {}) {
   }
 
   const existing = options.replaceSource ? state.pickTrades.filter((trade) => trade.source !== source) : state.pickTrades;
-  state.pickTrades = dedupeTrades(trades.concat(existing));
+  // Keep trades stored oldest-first so later trades apply on top of earlier ones.
+  // Baseline trades.csv stays at the front; other imports are appended as the newest.
+  state.pickTrades = dedupeTrades(options.replaceSource ? trades.concat(existing) : existing.concat(trades));
   saveState({ label: "Trades imported" });
   if (!options.silent) {
     render();
