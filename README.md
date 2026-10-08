@@ -76,7 +76,7 @@ Without a persistent disk or external database, Render restarts and redeploys ca
 
 ## Admin password
 
-The Draft Room and Luis's page are locked behind an admin password. Other owners' pages (`?team=Name`) stay open.
+Luis's page (`?team=Luis`) is locked behind an admin password. The Draft Room and other owners' pages stay open.
 
 1. In Render, open the service, go to **Environment**, and add `ADMIN_PASSWORD` with the password you want.
 2. Save; Render redeploys. Visit the site and enter the password once; the browser remembers it until you press **Log Out**.

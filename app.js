@@ -78,10 +78,10 @@ function adminLogout() {
   render();
 }
 
-// The Draft Room and Luis's page are admin pages; other owners' pages stay open.
+// Only Luis's page is locked; the Draft Room and other owners' pages stay open.
 function pageNeedsAdmin() {
   const owner = ownerFromUrl();
-  return !owner || key(owner.owner) === key(ADMIN_OWNER_NAME);
+  return Boolean(owner && key(owner.owner) === key(ADMIN_OWNER_NAME));
 }
 
 function renderAdminGate() {
