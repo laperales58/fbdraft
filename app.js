@@ -931,8 +931,17 @@ function playerPortraitHtml(player) {
   return "<span class=\"player-portrait\" aria-hidden=\"true\">" + initials + img + "</span>";
 }
 
+// Board label: full name on one line, with team and position underneath ("SA · PF/C").
+// fitPlayerNames() shrinks the font for long names so they never wrap.
+function boardPlayerMeta(player) {
+  const team = normalize(player.team).toUpperCase();
+  const pos = normalize(player.pos) === "Keeper" ? "" : normalize(player.pos).split(/\s*[,/]\s*/).filter(Boolean).join("/");
+  return [team, pos].filter(Boolean).join(" \u00b7 ");
+}
+
 function pickPlayerHtml(player, label) {
-  return "<div class=\"pick-player-row\">" + playerPortraitHtml(player) + "<div class=\"pick-player\">" + escapeHtml(label) + "</div></div>";
+  if (!player) return "<div class=\"pick-player-row\"><div class=\"pick-player\">" + escapeHtml(label) + "</div></div>";
+  return "<div class=\"pick-player-row\">" + playerPortraitHtml(player) + "<div class=\"pick-player-text\"><div class=\"pick-player\" title=\"" + escapeHtml(player.player) + "\">" + escapeHtml(player.player) + "</div><div class=\"pick-player-meta\">" + escapeHtml(boardPlayerMeta(player)) + "</div></div></div>";
 }
 
 async function loadHeadshotIds() {
@@ -944,6 +953,35 @@ async function loadHeadshotIds() {
   } catch (error) {
     // No portraits available: the board still works with initials.
   }
+}
+
+const NAME_FONT_MAX = 15.2; // px, matches 0.95rem
+const NAME_FONT_MIN = 10.5;
+function fitPlayerNames(root = document) {
+  root.querySelectorAll(".pick-player-text .pick-player").forEach((el) => {
+    el.style.fontSize = "";
+    if (!el.clientWidth) return; // hidden tab: fitted when it is shown
+    // Measure the real (sub-pixel) text width; scrollWidth rounds and can miss a 1px overflow.
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const tooWide = () => range.getBoundingClientRect().width > el.clientWidth - 1;
+    let size = NAME_FONT_MAX;
+    while (tooWide() && size > NAME_FONT_MIN) {
+      size -= 0.5;
+      el.style.fontSize = size + "px";
+    }
+  });
+}
+
+let fitNamesTimer = null;
+window.addEventListener("resize", () => {
+  clearTimeout(fitNamesTimer);
+  fitNamesTimer = setTimeout(() => fitPlayerNames(), 120);
+});
+// Re-fit once web fonts finish loading, since they change text width.
+if (document.fonts) {
+  if (document.fonts.ready) document.fonts.ready.then(() => fitPlayerNames());
+  if (document.fonts.addEventListener) document.fonts.addEventListener("loadingdone", () => fitPlayerNames());
 }
 
 function renderBoard() {
@@ -968,6 +1006,7 @@ function renderBoard() {
     card.innerHTML = "<div class=\"pick-meta\"><span>" + escapeHtml(slot.roundLabel) + "</span><span>Pick " + (i + 1) + "</span></div>" + pickPlayerHtml(slot.skipped ? null : player, slot.skipped ? "Roster Full" : (player ? player.player : "Available")) + "<div class=\"pick-owner\">" + ownerLine + "</div>";
     els.draftBoard.append(card);
   }
+  fitPlayerNames(els.draftBoard);
 }
 
 function pickCardHtml(slot, index, pick, keeper, player, compact = false) {
@@ -1011,6 +1050,7 @@ function renderOwnerDraftBoard(ownerId) {
 
     els.ownerDraftBoard.append(row);
   }
+  fitPlayerNames(els.ownerDraftBoard);
 }
 
 function setOwnerTab(tab) {
@@ -1027,6 +1067,7 @@ function setOwnerTab(tab) {
   document.querySelectorAll(".owner-tab-panel").forEach((panel) => {
     panel.hidden = panel.dataset.ownerPanel !== activeOwnerTab;
   });
+  fitPlayerNames();
 }
 
 function setSetupTab(tab) {

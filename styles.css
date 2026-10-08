@@ -46,13 +46,18 @@ input, select { width: 100%; min-height: 40px; border: 1px solid var(--line); bo
 .position-chip { min-width: 56px; min-height: 34px; border: 1px solid var(--line); border-radius: 6px; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 8px; background: white; }
 .position-chip span { color: var(--muted); font-size: 0.76rem; font-weight: 800; }
 .position-chip strong { font-size: 1rem; }
-.draft-board { display: grid; grid-template-columns: repeat(auto-fit, minmax(168px, 1fr)); gap: 10px; }
+.draft-board { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
 .pick-card { min-height: 92px; border: 1px solid var(--line); border-left: 5px solid var(--accent); border-radius: 7px; padding: 10px; background: #fffdf8; }
 .pick-card.empty { border-left-color: #cbc2b2; color: var(--muted); }
 .pick-meta { display: flex; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 0.78rem; font-weight: 800; }
 .pick-player { margin-top: 9px; font-weight: 800; }
 .pick-player-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; min-width: 0; }
-.pick-player-row .pick-player { margin-top: 0; min-width: 0; font-size: 0.95rem; line-height: 1.2; overflow-wrap: break-word; }
+.pick-player-row .pick-player { margin-top: 0; min-width: 0; font-size: 0.95rem; line-height: 1.2; }
+.pick-player-text { flex: 1 1 auto; min-width: 0; display: grid; gap: 2px; }
+.pick-player-text .pick-player { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pick-player-meta { color: var(--muted); font-size: 0.74rem; font-weight: 700; letter-spacing: 0.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pick-card.keeper .pick-player-text .pick-player::after { content: none; }
+.pick-card.keeper .pick-meta span:first-child::after { content: "Keeper"; margin-left: 6px; color: #4f46e5; font-size: 0.68rem; font-weight: 800; text-transform: uppercase; }
 .player-portrait { position: relative; flex: 0 0 auto; width: 34px; height: 34px; border-radius: 50%; overflow: hidden; background: #e6eef0; border: 1px solid var(--line); display: grid; place-items: center; }
 .player-portrait img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center top; }
 .portrait-initials { color: var(--accent-strong); font-size: 0.72rem; font-weight: 800; letter-spacing: 0.02em; }
@@ -171,7 +176,7 @@ body:not(.draft-started) #edit-setup { display: none; }
 .owner-board-round-title { border: 1px solid var(--line); border-radius: 7px; background: #eef7f8; color: var(--accent-strong); padding: 9px 8px; display: grid; align-content: center; gap: 2px; text-align: center; }
 .owner-board-round-title strong { font-size: 0.92rem; }
 .owner-board-round-title span { color: var(--muted); font-size: 0.72rem; font-weight: 800; }
-.owner-board-round-picks { display: grid; grid-template-columns: repeat(auto-fit, minmax(132px, 1fr)); gap: 8px; }
+.owner-board-round-picks { display: grid; grid-template-columns: repeat(auto-fit, minmax(176px, 1fr)); gap: 8px; }
 .owner-board-card { min-height: 86px; }
 .owner-board-card.on-clock-card { outline: 3px solid rgba(180, 35, 24, 0.2); border-left-color: var(--danger); }
 .owner-board-card.my-pick-card:not(.on-clock-card) { border-left-color: var(--gold); }
