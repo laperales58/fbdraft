@@ -292,7 +292,8 @@ function playerFromRecord(record, index) {
     threepm: toNumber(readColumn(record, ["threepm", "3pm", "3m", "threes", "3:00 pm"])), 
     fg_pct: toNumber(readColumn(record, ["fg_pct", "fg%", "fg"])),
     ft_pct: toNumber(readColumn(record, ["ft_pct", "ft%", "ft"])),
-    to: toNumber(readColumn(record, ["to", "turnovers", "tov"]))
+    to: toNumber(readColumn(record, ["to", "turnovers", "tov"])),
+    nbaId: normalize(readColumn(record, ["nba_id", "nba id", "nbaid", "player_id", "person_id"]))
   };
 }
 
@@ -401,6 +402,7 @@ function keeperForScheduleIndex(schedule, index) {
   return {
     playerId: player ? player.id : "keeper-" + slot.ownerId + "-" + ownerSlotCount,
     player: keeperName,
+    nbaId: player ? player.nbaId : "",
     team: player ? player.team : "",
     pos: player ? player.pos : "Keeper",
     rank: player ? player.rank : "",
@@ -904,6 +906,46 @@ function renderSelects() {
   els.pickOwner.value = ownerForNextPick() ? ownerForNextPick().id : (state.owners[0] ? state.owners[0].id : "");
 }
 
+// ---- Player portraits -------------------------------------------------
+// headshots.json maps a normalized player name to their NBA.com person ID.
+// Images load straight from the NBA's public headshot CDN; if a player has no
+// ID (or the image fails) we show their initials instead.
+// A players.csv column named NBA_ID overrides the lookup for any player.
+const HEADSHOT_URL = "https://cdn.nba.com/headshots/nba/latest/260x190/";
+let headshotIds = {};
+
+function headshotKey(name) {
+  return String(name || "").normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase()
+    .replace(/[.'’]/g, "").replace(/\b(jr|sr|ii|iii|iv)\b/g, "").replace(/[^a-z]+/g, " ").trim();
+}
+
+function playerInitials(name) {
+  return String(name || "").split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0].toUpperCase()).join("");
+}
+
+function playerPortraitHtml(player) {
+  if (!player) return "";
+  const nbaId = player.nbaId || headshotIds[headshotKey(player.player)];
+  const initials = "<span class=\"portrait-initials\">" + escapeHtml(playerInitials(player.player)) + "</span>";
+  const img = nbaId ? "<img src=\"" + HEADSHOT_URL + encodeURIComponent(nbaId) + ".png\" alt=\"\" loading=\"lazy\" onerror=\"this.remove()\">" : "";
+  return "<span class=\"player-portrait\" aria-hidden=\"true\">" + initials + img + "</span>";
+}
+
+function pickPlayerHtml(player, label) {
+  return "<div class=\"pick-player-row\">" + playerPortraitHtml(player) + "<div class=\"pick-player\">" + escapeHtml(label) + "</div></div>";
+}
+
+async function loadHeadshotIds() {
+  try {
+    const response = await fetch("headshots.json");
+    if (!response.ok) return;
+    headshotIds = await response.json();
+    render();
+  } catch (error) {
+    // No portraits available: the board still works with initials.
+  }
+}
+
 function renderBoard() {
   const byId = new Map(state.players.map((player) => [player.id, player]));
   const schedule = computePickSchedule();
@@ -923,7 +965,7 @@ function renderBoard() {
     const card = document.createElement("article");
     card.className = "pick-card" + (player || slot.skipped ? "" : " empty") + (keeper ? " keeper" : "") + (slot.traded ? " traded" : "") + (slot.compensation ? " compensation" : "") + (slot.skipped ? " skipped" : "");
     const ownerLine = slot.traded ? escapeHtml(owner.team) + " <span>from " + escapeHtml(originalOwner.team) + "</span>" : escapeHtml(owner.team);
-    card.innerHTML = "<div class=\"pick-meta\"><span>" + escapeHtml(slot.roundLabel) + "</span><span>Pick " + (i + 1) + "</span></div><div class=\"pick-player\">" + escapeHtml(slot.skipped ? "Roster Full" : (player ? player.player : "Available")) + "</div><div class=\"pick-owner\">" + ownerLine + "</div>";
+    card.innerHTML = "<div class=\"pick-meta\"><span>" + escapeHtml(slot.roundLabel) + "</span><span>Pick " + (i + 1) + "</span></div>" + pickPlayerHtml(slot.skipped ? null : player, slot.skipped ? "Roster Full" : (player ? player.player : "Available")) + "<div class=\"pick-owner\">" + ownerLine + "</div>";
     els.draftBoard.append(card);
   }
 }
@@ -933,7 +975,7 @@ function pickCardHtml(slot, index, pick, keeper, player, compact = false) {
   const originalOwner = ownerById(slot.originalOwnerId);
   const ownerLine = slot.traded ? escapeHtml(owner.team) + " <span>from " + escapeHtml(originalOwner.team) + "</span>" : escapeHtml(owner.team);
   const playerName = slot.skipped ? "Roster Full" : (player ? player.player : "Available");
-  return "<div class=\"pick-meta\"><span>" + escapeHtml(slot.roundLabel) + "</span><span>Pick " + (index + 1) + "</span></div><div class=\"pick-player\">" + escapeHtml(playerName) + "</div><div class=\"pick-owner\">" + ownerLine + "</div>";
+  return "<div class=\"pick-meta\"><span>" + escapeHtml(slot.roundLabel) + "</span><span>Pick " + (index + 1) + "</span></div>" + pickPlayerHtml(slot.skipped ? null : player, playerName) + "<div class=\"pick-owner\">" + ownerLine + "</div>";
 }
 
 function renderOwnerDraftBoard(ownerId) {
@@ -1280,6 +1322,7 @@ async function loadDefaultCsv() {
 }
 
 async function initializeApp() {
+  loadHeadshotIds();
   const loadedServerState = await loadServerState();
   if (loadedServerState && state.players.length) {
     render();
