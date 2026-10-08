@@ -51,6 +51,11 @@ input, select { width: 100%; min-height: 40px; border: 1px solid var(--line); bo
 .pick-card.empty { border-left-color: #cbc2b2; color: var(--muted); }
 .pick-meta { display: flex; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 0.78rem; font-weight: 800; }
 .pick-player { margin-top: 9px; font-weight: 800; }
+.pick-player-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; min-width: 0; }
+.pick-player-row .pick-player { margin-top: 0; min-width: 0; font-size: 0.95rem; line-height: 1.2; overflow-wrap: break-word; }
+.player-portrait { position: relative; flex: 0 0 auto; width: 34px; height: 34px; border-radius: 50%; overflow: hidden; background: #e6eef0; border: 1px solid var(--line); display: grid; place-items: center; }
+.player-portrait img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center top; }
+.portrait-initials { color: var(--accent-strong); font-size: 0.72rem; font-weight: 800; letter-spacing: 0.02em; }
 .pick-owner { margin-top: 3px; color: var(--muted); font-size: 0.86rem; }
 .table-wrap { overflow: auto; border: 1px solid var(--line); border-radius: 7px; }
 table { width: 100%; border-collapse: collapse; min-width: 620px; }
