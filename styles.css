@@ -278,3 +278,5 @@ body.owner-page #admin-logout { display: none; }
 .pick-traded-to { color: #8a5a12; font-weight: 800; }
 .roster-trade-tag { margin-left: 6px; padding: 1px 6px; border-radius: 999px; background: #fff3dc; color: #8a5a12; font-size: 0.7rem; font-weight: 800; }
 .pick-map-next-title { margin-top: 18px; }
+.owner-trade-history-title { margin-top: 14px; }
+@media (max-width: 720px) { .trade-builder { grid-template-columns: 1fr; } }

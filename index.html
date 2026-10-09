@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Fantasy Basketball Draft</title>
-    <link rel="stylesheet" href="styles.css?v=draft-hq-12">
+    <link rel="stylesheet" href="styles.css?v=draft-hq-13">
   </head>
   <body>
     <header class="topbar">
@@ -193,6 +193,7 @@
             <button class="owner-tab is-active" type="button" role="tab" aria-selected="true" data-owner-tab="board">Live Board</button>
             <button class="owner-tab" type="button" role="tab" aria-selected="false" data-owner-tab="pool">Player Pool</button>
             <button class="owner-tab" type="button" role="tab" aria-selected="false" data-owner-tab="roster">Roster</button>
+            <button class="owner-tab" type="button" role="tab" aria-selected="false" data-owner-tab="trades">Trades</button>
             <button id="owner-league-tab" class="owner-tab" type="button" role="tab" aria-selected="false" data-owner-tab="league" hidden>League</button>
             <button id="owner-history-tab" class="owner-tab" type="button" role="tab" aria-selected="false" data-owner-tab="history" hidden>History</button>
           </div>
@@ -224,6 +225,31 @@
               </select>
             </div>
             <div class="table-wrap"><table><thead><tr><th>Draft</th><th>Flag</th><th>ADP</th><th>Player</th><th>Pos</th><th>Team</th><th>PTS</th><th>AST</th><th>STL</th><th>REB</th><th>BLK</th><th>TO</th><th>FG%</th><th>FT%</th><th>3PM</th><th class="total-col">Total</th></tr></thead><tbody id="owner-player-body"></tbody></table></div>
+          </div>
+          <div class="owner-tab-panel" data-owner-panel="trades" role="tabpanel" hidden>
+            <div class="section-title"><h2>Make a Trade</h2><span class="pill">Players &amp; picks</span></div>
+            <p class="pick-map-note">Pick who you're trading with, then tap every player and pick each side is sending. Leave one side empty for a one-way deal. Trades go live for everyone as soon as you add them.</p>
+            <div class="trade-builder">
+              <div class="trade-side">
+                <label>You<select id="owner-trade-owner-a" disabled></select></label>
+                <span class="trade-side-label">Send</span>
+                <div id="owner-trade-picks-a" class="trade-pick-grid"></div>
+              </div>
+              <div class="trade-side">
+                <label>Trading with<select id="owner-trade-owner-b"></select></label>
+                <span class="trade-side-label">They send</span>
+                <div id="owner-trade-picks-b" class="trade-pick-grid"></div>
+              </div>
+            </div>
+            <div class="trade-summary-bar">
+              <span id="owner-trade-summary">Tap the players and picks each side is sending.</span>
+              <div class="section-actions">
+                <button id="owner-clear-trade" class="secondary" type="button">Clear</button>
+                <button id="owner-add-trade" type="button">Add Trade</button>
+              </div>
+            </div>
+            <div class="section-title owner-trade-history-title"><h2>Your Trades</h2><span class="pill">Newest first</span></div>
+            <div id="owner-trade-list" class="trade-list"></div>
           </div>
           <div class="owner-tab-panel league-panel" data-owner-panel="league" role="tabpanel" hidden>
             <div class="section-title"><h2>Team Output</h2><span class="pill">Per game</span></div>
@@ -277,6 +303,6 @@
       </section>
     </main>
 
-    <script src="app.js?v=draft-hq-12"></script>
+    <script src="app.js?v=draft-hq-13"></script>
   </body>
 </html>

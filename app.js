@@ -11,7 +11,6 @@ let suppressServerSync = false;
 let savingToServer = false;
 let queuedServerState = null;
 let conflictAlertShown = false;
-let tradeSelection = { a: new Set(), b: new Set() };
 let queuedServerMeta = null;
 let historyEntries = null;
 let historyError = "";
@@ -159,6 +158,14 @@ const els = {
   ownerAdminHistory: document.querySelector("#owner-admin-history"),
   ownerHistoryTab: document.querySelector("#owner-history-tab"),
   ownerLeagueTab: document.querySelector("#owner-league-tab"),
+  ownerTradeOwnerA: document.querySelector("#owner-trade-owner-a"),
+  ownerTradeOwnerB: document.querySelector("#owner-trade-owner-b"),
+  ownerTradePicksA: document.querySelector("#owner-trade-picks-a"),
+  ownerTradePicksB: document.querySelector("#owner-trade-picks-b"),
+  ownerTradeSummary: document.querySelector("#owner-trade-summary"),
+  ownerAddTrade: document.querySelector("#owner-add-trade"),
+  ownerClearTrade: document.querySelector("#owner-clear-trade"),
+  ownerTradeList: document.querySelector("#owner-trade-list"),
   leagueOutput: document.querySelector("#league-output"),
   leagueRanks: document.querySelector("#league-ranks"),
   leagueMatrix: document.querySelector("#league-matrix"),
@@ -901,8 +908,51 @@ function currentPickHoldings() {
   return holdings;
 }
 
-function renderTradePickGrid(side, ownerId, holdings, nextHoldings, roster) {
-  const container = side === "a" ? els.tradePicksA : els.tradePicksB;
+// ---- Trade builders ----
+// The same builder runs in the Draft Room setup (pick both owners) and on each
+// owner page (that owner is locked in as side A).
+let tradeBuilders = null;
+function getTradeBuilders() {
+  if (tradeBuilders) return tradeBuilders;
+  tradeBuilders = {
+    setup: {
+      label: "setup",
+      ownerA: els.tradeOwnerA, ownerB: els.tradeOwnerB,
+      picksA: els.tradePicksA, picksB: els.tradePicksB,
+      summary: els.tradeSummary, addBtn: els.addTrade, clearBtn: els.clearTrade, list: els.tradeList,
+      selection: { a: new Set(), b: new Set() },
+      fixedOwnerA: () => null,
+      listFilter: () => true,
+      canRemove: () => true
+    },
+    owner: {
+      label: "owner",
+      ownerA: els.ownerTradeOwnerA, ownerB: els.ownerTradeOwnerB,
+      picksA: els.ownerTradePicksA, picksB: els.ownerTradePicksB,
+      summary: els.ownerTradeSummary, addBtn: els.ownerAddTrade, clearBtn: els.ownerClearTrade, list: els.ownerTradeList,
+      selection: { a: new Set(), b: new Set() },
+      fixedOwnerA: () => { const owner = ownerFromUrl(); return owner ? owner.id : null; },
+      // Only this owner's trades are listed on their page.
+      listFilter: (trade) => tradeInvolves(trade, (ownerFromUrl() || {}).id),
+      // Owners can undo live trades they were part of; pre-draft trades from
+      // trades.csv can only be removed from the Draft Room.
+      canRemove: (trade) => {
+        const owner = ownerFromUrl();
+        if (!owner || trade.source) return false;
+        return ownerHasAdminPowers(owner) || tradeInvolves(trade, owner.id);
+      }
+    }
+  };
+  return tradeBuilders;
+}
+
+function tradeInvolves(trade, ownerId) {
+  return Boolean(ownerId) && [trade.ownerAId, trade.ownerBId, trade.fromOwnerId, trade.toOwnerId].includes(ownerId);
+}
+
+function renderTradePickGrid(builder, side, ownerId, holdings, nextHoldings, roster) {
+  const container = side === "a" ? builder.picksA : builder.picksB;
+  const tradeSelection = builder.selection;
   const held = holdings[ownerId] || [];
   const nextHeld = nextHoldings[ownerId] || [];
   const validRefs = new Set(held.map((pick) => pick.ref).concat(nextHeld.map((pick) => pick.ref), roster.map((player) => playerRef(player.id))));
@@ -927,8 +977,8 @@ function renderTradePickGrid(side, ownerId, holdings, nextHoldings, roster) {
   container.innerHTML = group("Players", players) + group("This year's picks", thisYear) + group(nextDraftYear() + " picks", nextYear);
 }
 
-function selectionCounts(side) {
-  const refs = Array.from(tradeSelection[side]);
+function selectionCounts(builder, side) {
+  const refs = Array.from(builder.selection[side]);
   const players = refs.filter(isPlayerRef).length;
   return { players, picks: refs.length - players };
 }
@@ -940,32 +990,40 @@ function sendsText(counts) {
   return parts.join(" + ");
 }
 
-function renderTradeSummary() {
-  const ownerAId = els.tradeOwnerA.value;
-  const ownerBId = els.tradeOwnerB.value;
-  const aCount = tradeSelection.a.size;
-  const bCount = tradeSelection.b.size;
+function renderTradeSummary(builder) {
+  const ownerAId = builder.ownerA.value;
+  const ownerBId = builder.ownerB.value;
+  const aCount = builder.selection.a.size;
+  const bCount = builder.selection.b.size;
   const sameOwner = ownerAId === ownerBId;
-  let text = ownerName(ownerAId) + " sends " + sendsText(selectionCounts("a")) + " \u00b7 " + ownerName(ownerBId) + " sends " + sendsText(selectionCounts("b"));
+  let text = ownerName(ownerAId) + " sends " + sendsText(selectionCounts(builder, "a")) + " \u00b7 " + ownerName(ownerBId) + " sends " + sendsText(selectionCounts(builder, "b"));
   if (sameOwner) text = "Choose two different owners.";
   else if (!aCount && !bCount) text = "Tap the players and picks each owner is sending.";
-  els.tradeSummary.textContent = text;
-  els.addTrade.disabled = sameOwner || (!aCount && !bCount);
-  els.clearTrade.disabled = !aCount && !bCount;
+  builder.summary.textContent = text;
+  builder.addBtn.disabled = sameOwner || (!aCount && !bCount);
+  builder.clearBtn.disabled = !aCount && !bCount;
 }
 
-function renderTradeControls() {
-  const selectedA = els.tradeOwnerA.value || state.owners[0].id;
-  const selectedB = els.tradeOwnerB.value || state.owners[1].id;
-  els.tradeOwnerA.innerHTML = ownerOptions(selectedA);
-  els.tradeOwnerB.innerHTML = ownerOptions(selectedB);
-  els.tradeOwnerA.value = selectedA;
-  els.tradeOwnerB.value = selectedB;
+function renderTradeControls(builder = getTradeBuilders().setup) {
+  if (!builder.ownerA) return;
+  const fixedA = builder.fixedOwnerA();
+  if (fixedA && builder.ownerA.value && builder.ownerA.value !== fixedA) builder.selection.a.clear();
+  const selectedA = fixedA || builder.ownerA.value || state.owners[0].id;
+  let selectedB = builder.ownerB.value || state.owners[1].id;
+  if (selectedB === selectedA && fixedA) {
+    builder.selection.b.clear();
+    selectedB = (state.owners.find((owner) => owner.id !== selectedA) || state.owners[0]).id;
+  }
+  builder.ownerA.innerHTML = ownerOptions(selectedA);
+  builder.ownerB.innerHTML = fixedA ? state.owners.filter((owner) => owner.id !== fixedA).map((owner) => "<option value=\"" + owner.id + "\">" + escapeHtml(owner.owner) + "</option>").join("") : ownerOptions(selectedB);
+  builder.ownerA.value = selectedA;
+  builder.ownerB.value = selectedB;
+  builder.ownerA.disabled = Boolean(fixedA);
   const holdings = currentPickHoldings();
   const nextHoldings = nextYearPickHoldings();
-  renderTradePickGrid("a", selectedA, holdings, nextHoldings, teamPlayers(selectedA));
-  renderTradePickGrid("b", selectedB, holdings, nextHoldings, teamPlayers(selectedB));
-  renderTradeSummary();
+  renderTradePickGrid(builder, "a", selectedA, holdings, nextHoldings, teamPlayers(selectedA));
+  renderTradePickGrid(builder, "b", selectedB, holdings, nextHoldings, teamPlayers(selectedB));
+  renderTradeSummary(builder);
 }
 
 function tradePicksText(ownerId, picks, players) {
@@ -995,25 +1053,34 @@ function tradeKindText(trade) {
   return trade.type === "swap" ? "Specific pick swap" : "One-way pick transfer";
 }
 
-function renderTrades() {
-  renderTradeControls();
-  if (!state.pickTrades.length) {
-    els.tradeList.innerHTML = "<div class=\"empty-state\">No pick trades entered.</div>";
+function renderTradeList(builder) {
+  if (!builder.list) return;
+  const trades = state.pickTrades.filter(builder.listFilter);
+  if (!trades.length) {
+    builder.list.innerHTML = "<div class=\"empty-state\">" + (builder.label === "owner" ? "You haven't made any trades yet." : "No trades entered.") + "</div>";
     return;
   }
-  els.tradeList.innerHTML = "";
+  builder.list.innerHTML = "";
   // Show the most recent trade first so mistakes are easy to spot and remove.
-  state.pickTrades.slice().reverse().forEach((trade) => {
+  trades.slice().reverse().forEach((trade) => {
     const row = document.createElement("div");
     row.className = "trade-row";
-    row.innerHTML = "<div><strong>" + escapeHtml(tradeText(trade)) + "</strong><span>" + escapeHtml(tradeKindText(trade)) + "</span></div><button type=\"button\" data-trade-id=\"" + escapeHtml(trade.id) + "\">Remove</button>";
-    row.querySelector("button").addEventListener("click", () => {
+    const removable = builder.canRemove(trade);
+    row.innerHTML = "<div><strong>" + escapeHtml(tradeText(trade)) + "</strong><span>" + escapeHtml(tradeKindText(trade)) + "</span></div>" + (removable ? "<button type=\"button\" data-trade-id=\"" + escapeHtml(trade.id) + "\">Remove</button>" : "");
+    if (removable) row.querySelector("button").addEventListener("click", () => {
+      if (!confirm("Remove this trade?\n\n" + tradeText(trade))) return;
       state.pickTrades = state.pickTrades.filter((item) => item.id !== trade.id);
       saveState({ label: "Trade removed: " + tradeText(trade) });
       render();
     });
-    els.tradeList.append(row);
+    builder.list.append(row);
   });
+}
+
+function renderTrades() {
+  const builder = getTradeBuilders().setup;
+  renderTradeControls(builder);
+  renderTradeList(builder);
 }
 
 function renderPickMap() {
@@ -1163,9 +1230,10 @@ function importTrades(text, options = {}) {
   return trades.length;
 }
 
-function addTradeFromForm() {
-  const ownerAId = els.tradeOwnerA.value;
-  const ownerBId = els.tradeOwnerB.value;
+function addTradeFromForm(builder = getTradeBuilders().setup) {
+  const tradeSelection = builder.selection;
+  const ownerAId = builder.fixedOwnerA() || builder.ownerA.value;
+  const ownerBId = builder.ownerB.value;
   if (ownerAId === ownerBId) return alert("Pick trades need two different owners.");
   const rostered = new Map(rosteredPlayers().map((player) => [player.id, player]));
   const split = (side) => {
@@ -1181,7 +1249,8 @@ function addTradeFromForm() {
   if (movesThisYearPicks && state.picks.length && !confirm("This trade moves picks in the current draft. Add it?")) return;
   const trade = { id: crypto.randomUUID(), type: "package", ownerAId, ownerBId, aGives: a.picks, bGives: b.picks, aPlayers: a.players, bPlayers: b.players, addedAt: new Date().toISOString() };
   state.pickTrades.push(trade);
-  tradeSelection = { a: new Set(), b: new Set() };
+  builder.selection.a.clear();
+  builder.selection.b.clear();
   saveState({ label: "Trade added: " + tradeText(trade) });
   render();
 }
@@ -1511,7 +1580,7 @@ function renderLeagueTools(myOwnerId) {
 
 function setOwnerTab(tab) {
   const owner = ownerFromUrl();
-  const allowed = ["board", "pool", "roster"].concat(owner && ownerHasAdminPowers(owner) ? ["league", "history"] : []);
+  const allowed = ["board", "pool", "roster", "trades"].concat(owner && ownerHasAdminPowers(owner) ? ["league", "history"] : []);
   const previous = activeOwnerTab;
   activeOwnerTab = allowed.includes(tab) ? tab : "board";
   if (activeOwnerTab === "history" && (previous !== "history" || historyEntries === null)) loadHistory();
@@ -1785,6 +1854,8 @@ function renderOwnerPage() {
     : "<strong>Draft complete</strong><span>No open pick slots remain.</span>";
   renderOwnerDraftBoard(owner.id);
   renderOwnerRoster(owner.id);
+  renderTradeControls(getTradeBuilders().owner);
+  renderTradeList(getTradeBuilders().owner);
   els.ownerPlayerBody.innerHTML = players.length ? players.slice(0, 500).map((player) => {
     const flagged = flags.has(player.id);
     return "<tr><td><button class=\"draft-player-button\" type=\"button\" data-player-name=\"" + escapeHtml(player.player) + "\"" + (onClock ? "" : " disabled") + ">Draft</button></td><td><button class=\"flag-button" + (flagged ? " flagged" : "") + "\" type=\"button\" data-player-id=\"" + escapeHtml(player.id) + "\">" + (flagged ? "*" : "+") + "</button></td><td>" + (player.rank || "") + "</td><td>" + escapeHtml(player.player) + "</td><td>" + escapeHtml(player.pos) + "</td><td>" + escapeHtml(player.team) + "</td><td>" + player.pts.toFixed(1) + "</td><td>" + player.ast.toFixed(1) + "</td><td>" + player.stl.toFixed(1) + "</td><td>" + player.reb.toFixed(1) + "</td><td>" + player.blk.toFixed(1) + "</td><td>" + player.to.toFixed(1) + "</td><td>" + player.fg_pct.toFixed(3) + "</td><td>" + player.ft_pct.toFixed(3) + "</td><td>" + player.threepm.toFixed(1) + "</td>" + totalCellHtml(player) + "</tr>";
@@ -1899,18 +1970,21 @@ els.draftOrderList.addEventListener("click", (event) => {
 });
 els.startDraft.addEventListener("click", () => { if (!hasDraftOrder()) return alert("Set the draft order first."); state.draftStarted = true; saveState({ label: "Draft started" }); render(); });
 els.editSetup.addEventListener("click", () => { state.draftStarted = false; saveState({ label: "Setup reopened" }); render(); });
-els.addTrade.addEventListener("click", addTradeFromForm);
-els.tradeOwnerA.addEventListener("change", () => { tradeSelection.a.clear(); renderTradeControls(); });
-els.tradeOwnerB.addEventListener("change", () => { tradeSelection.b.clear(); renderTradeControls(); });
-els.clearTrade.addEventListener("click", () => { tradeSelection = { a: new Set(), b: new Set() }; renderTradeControls(); });
-[els.tradePicksA, els.tradePicksB].forEach((grid) => grid.addEventListener("click", (event) => {
-  const button = event.target.closest(".trade-pick");
-  if (!button) return;
-  const selection = tradeSelection[button.dataset.side];
-  if (selection.has(button.dataset.ref)) selection.delete(button.dataset.ref);
-  else selection.add(button.dataset.ref);
-  renderTradeControls();
-}));
+Object.values(getTradeBuilders()).forEach((builder) => {
+  if (!builder.ownerA) return;
+  builder.addBtn.addEventListener("click", () => addTradeFromForm(builder));
+  builder.ownerA.addEventListener("change", () => { builder.selection.a.clear(); renderTradeControls(builder); });
+  builder.ownerB.addEventListener("change", () => { builder.selection.b.clear(); renderTradeControls(builder); });
+  builder.clearBtn.addEventListener("click", () => { builder.selection.a.clear(); builder.selection.b.clear(); renderTradeControls(builder); });
+  [builder.picksA, builder.picksB].forEach((grid) => grid.addEventListener("click", (event) => {
+    const button = event.target.closest(".trade-pick");
+    if (!button) return;
+    const selection = builder.selection[button.dataset.side];
+    if (selection.has(button.dataset.ref)) selection.delete(button.dataset.ref);
+    else selection.add(button.dataset.ref);
+    renderTradeControls(builder);
+  }));
+});
 els.ownerSelect.addEventListener("change", () => { state.selectedOwnerId = els.ownerSelect.value; saveState({ history: false }); renderDashboard(); });
 els.ownerTabs.addEventListener("click", (event) => {
   const tab = event.target.closest(".owner-tab");
