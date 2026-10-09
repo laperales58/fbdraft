@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Fantasy Basketball Draft</title>
-    <link rel="stylesheet" href="styles.css?v=draft-hq-11">
+    <link rel="stylesheet" href="styles.css?v=draft-hq-12">
   </head>
   <body>
     <header class="topbar">
@@ -73,7 +73,7 @@
 
           <div class="setup-tab-panel" data-setup-panel="trades" role="tabpanel" hidden>
             <div class="section-title">
-              <h2>Pick Trades</h2>
+              <h2>Trades</h2>
               <label class="file-button secondary compact-file-button">Import Trades<input id="trades-input" type="file" accept=".csv,text/csv"></label>
             </div>
             <p class="pick-map-note">Choose the two owners, then tap every pick each one is sending. Leave one side empty for a one-way transfer.</p>
@@ -90,7 +90,7 @@
               </div>
             </div>
             <div class="trade-summary-bar">
-              <span id="trade-summary">Tap the picks each owner is sending.</span>
+              <span id="trade-summary">Tap the players and picks each owner is sending.</span>
               <div class="section-actions">
                 <button id="clear-trade" class="secondary" type="button">Clear</button>
                 <button id="add-trade" type="button">Add Trade</button>
@@ -124,6 +124,23 @@
                   </tr>
                 </thead>
                 <tbody id="pick-map-body"></tbody>
+              </table>
+            </div>
+            <div class="section-title pick-map-next-title">
+              <h2 id="pick-map-next-title">Next Year's Picks</h2>
+              <span class="pill">Order set next season</span>
+            </div>
+            <p class="pick-map-note"><span class="pick-map-legend"><span class="pick-map-num">Own</span> Own pick</span><span class="pick-map-legend"><span class="pick-map-gained">Name</span> Acquired from that owner</span><span class="pick-map-legend"><span class="pick-map-dash">—</span> Traded away</span></p>
+            <div class="table-wrap">
+              <table class="pick-map-table">
+                <thead>
+                  <tr>
+                    <th>Owner</th>
+                    <th>R1</th><th>R2</th><th>R3</th><th>R4</th><th>R5</th><th>R6</th><th>R7</th>
+                    <th>R8</th><th>R9</th><th>R10</th><th>R11</th><th>R12</th><th>R13</th><th>Total</th>
+                  </tr>
+                </thead>
+                <tbody id="pick-map-next-body"></tbody>
               </table>
             </div>
           </div>
@@ -260,6 +277,6 @@
       </section>
     </main>
 
-    <script src="app.js?v=draft-hq-11"></script>
+    <script src="app.js?v=draft-hq-12"></script>
   </body>
 </html>

@@ -142,6 +142,12 @@ Transaction-list format is also supported:
 
 For multi-pick trades, list several rounds in one cell separated by semicolons, for example `swap,Luis,4;6;8;10,Daniel,2` for a 4-for-1. In the app, the **Trades** tab lets you tap any number of picks on each side, including picks an owner previously acquired.
 
+### Player trades and next year's picks
+
+The **Trades** tab lists three things for each owner: players on their roster, this year's unused picks, and next year's picks (13 rounds, named by round and original owner since next year's order isn't set). Tap anything on either side and press **Add Trade**. Players can be traded again later; trades apply in the order they were added.
+
+Rosters stay at 13: if a team trades away more players than it gets back, it gets extra picks at the end of the draft; if it takes on more, its later picks are skipped. A pick that already has a player in it is never skipped. The **Pick Map** tab shows a second table for next year's picks, and the draft board shows "→ Owner" on any drafted player who has since been traded.
+
 Importing trades appends to the current trade list, so live draft-night trades can still be added manually with **Add Trade**. A root-level `trades.csv` is loaded automatically on startup as baseline trades; manual trades added in the browser are preserved across refreshes.
 
 ## Undo and draft history

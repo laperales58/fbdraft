@@ -265,3 +265,16 @@ body.owner-page #admin-logout { display: none; }
 .league-note { color: var(--muted); font-size: 0.72rem; font-weight: 700; }
 .league-h2h-picks select { width: auto; min-width: 150px; }
 .league-h2h-title { display: flex; justify-content: space-between; align-items: center; }
+
+/* ---- Player + next-year pick trades ---- */
+.trade-group-label { grid-column: 1 / -1; margin-top: 4px; color: var(--muted); font-size: 0.7rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; }
+.trade-group-label:first-child { margin-top: 0; }
+.trade-pick.trade-player { grid-column: span 2; align-items: flex-start; text-align: left; padding: 6px 8px; }
+.trade-pick.trade-player strong { font-size: 0.82rem; }
+.trade-pick.trade-player span { color: var(--muted); font-weight: 700; }
+.trade-pick.trade-player.is-selected span { color: #d4eef1; }
+.trade-pick.next-year { border-style: dashed; }
+.trade-pick.next-year.is-selected { border-style: solid; }
+.pick-traded-to { color: #8a5a12; font-weight: 800; }
+.roster-trade-tag { margin-left: 6px; padding: 1px 6px; border-radius: 999px; background: #fff3dc; color: #8a5a12; font-size: 0.7rem; font-weight: 800; }
+.pick-map-next-title { margin-top: 18px; }

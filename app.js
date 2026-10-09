@@ -205,7 +205,9 @@ const els = {
   clearTrade: document.querySelector("#clear-trade"),
   addTrade: document.querySelector("#add-trade"),
   tradeList: document.querySelector("#trade-list"),
-  pickMapBody: document.querySelector("#pick-map-body")
+  pickMapBody: document.querySelector("#pick-map-body"),
+  pickMapNextBody: document.querySelector("#pick-map-next-body"),
+  pickMapNextTitle: document.querySelector("#pick-map-next-title")
 };
 
 function defaultState() {
@@ -460,10 +462,12 @@ function buildPickTradeMap() {
   for (const trade of state.pickTrades) {
     if (trade.type === "package") {
       for (const pick of trade.aGives || []) {
+        if (pick.year === "next") continue;
         const index = basePickIndexFor(pick.originalOwnerId, pick.round);
         if (index != null) map.set(index, trade.ownerBId);
       }
       for (const pick of trade.bGives || []) {
+        if (pick.year === "next") continue;
         const index = basePickIndexFor(pick.originalOwnerId, pick.round);
         if (index != null) map.set(index, trade.ownerAId);
       }
@@ -483,9 +487,32 @@ function buildPickTradeMap() {
   return map;
 }
 
+// Net players each team has gained (+) or given up (-) in player trades.
+function netPlayersTraded() {
+  const net = Object.fromEntries(state.owners.map((owner) => [owner.id, 0]));
+  for (const trade of state.pickTrades) {
+    if (trade.type !== "package") continue;
+    const aCount = (trade.aPlayers || []).length;
+    const bCount = (trade.bPlayers || []).length;
+    if (trade.ownerAId in net) net[trade.ownerAId] += bCount - aCount;
+    if (trade.ownerBId in net) net[trade.ownerBId] += aCount - bCount;
+  }
+  return net;
+}
+
+// How many draft selections each team gets so every roster ends at ROUNDS players.
+// A team that traded away players gets extra picks; one that took on players gets
+// later picks skipped.
+function selectionTargets() {
+  const net = netPlayersTraded();
+  return Object.fromEntries(state.owners.map((owner) => [owner.id, Math.max(0, ROUNDS - (net[owner.id] || 0))]));
+}
+
 function computePickSchedule() {
   const ownerCount = Math.max(state.owners.length, 1);
   const tradeMap = buildPickTradeMap();
+  const targets = selectionTargets();
+  const usedSlots = new Set(state.picks.map((pick, index) => pickIndexForDraftedPick(pick, index)));
   const schedule = [];
   const counts = Object.fromEntries(state.owners.map((owner) => [owner.id, 0]));
   const baseCount = ROUNDS * ownerCount;
@@ -493,15 +520,16 @@ function computePickSchedule() {
   for (let index = 0; index < baseCount; index += 1) {
     const originalOwnerId = baseOwnerIdForPickIndex(index);
     const ownerId = tradeMap.get(index) || originalOwnerId;
-    const skipped = (counts[ownerId] || 0) >= ROUNDS;
+    // A slot that already has a player in it is never skipped.
+    const skipped = (counts[ownerId] || 0) >= (targets[ownerId] ?? ROUNDS) && !usedSlots.has(index);
     if (!skipped) counts[ownerId] = (counts[ownerId] || 0) + 1;
     schedule.push({ index, pick: index + 1, round: Math.floor(index / ownerCount) + 1, roundLabel: "R" + (Math.floor(index / ownerCount) + 1), originalOwnerId, ownerId, traded: ownerId !== originalOwnerId, compensation: false, skipped });
   }
 
   let extraRound = 1;
-  while (state.owners.some((owner) => (counts[owner.id] || 0) < ROUNDS)) {
+  while (state.owners.some((owner) => (counts[owner.id] || 0) < (targets[owner.id] ?? ROUNDS))) {
     for (const ownerId of orderedOwnerIds()) {
-      if ((counts[ownerId] || 0) < ROUNDS) {
+      if ((counts[ownerId] || 0) < (targets[ownerId] ?? ROUNDS)) {
         counts[ownerId] = (counts[ownerId] || 0) + 1;
         schedule.push({ index: schedule.length, pick: schedule.length + 1, round: ROUNDS + extraRound, roundLabel: "Extra " + extraRound, originalOwnerId: ownerId, ownerId, traded: false, compensation: true, skipped: false });
       }
@@ -593,16 +621,39 @@ function draftedPlayerNames() {
   return names;
 }
 
-function teamPlayers(ownerId) {
+// Every rostered player (keepers + drafted), with who drafted them and who has them now.
+function rosteredPlayers() {
   const byId = new Map(state.players.map((player) => [player.id, player]));
   const schedule = computePickSchedule();
-  const keepers = schedule.map((slot, index) => keeperForScheduleIndex(schedule, index)).filter((keeper) => keeper && keeper.ownerId === ownerId);
-  const drafted = state.picks
-    .filter((pick) => pick.ownerId === ownerId)
-    .map((pick, index) => ({ player: byId.get(pick.playerId), pickIndex: pickIndexForDraftedPick(pick, index) }))
-    .filter((item) => item.player)
-    .map((item) => ({ ...item.player, pickIndex: item.pickIndex }));
-  return keepers.concat(drafted).sort((a, b) => (a.pickIndex || 0) - (b.pickIndex || 0));
+  const list = [];
+  schedule.forEach((slot, index) => {
+    const keeper = keeperForScheduleIndex(schedule, index);
+    if (keeper) list.push({ ...keeper, id: keeper.playerId, draftedById: keeper.ownerId });
+  });
+  state.picks.forEach((pick, index) => {
+    const player = byId.get(pick.playerId);
+    if (player) list.push({ ...player, pickIndex: pickIndexForDraftedPick(pick, index), draftedById: pick.ownerId });
+  });
+  const owners = playerOwnerMap(list);
+  return list.map((player) => ({ ...player, currentOwnerId: owners.get(player.id) || player.draftedById }));
+}
+
+// Who owns each rostered player after applying player trades in order.
+function playerOwnerMap(list) {
+  const owners = new Map(list.map((player) => [player.id, player.draftedById]));
+  for (const trade of state.pickTrades) {
+    if (trade.type !== "package") continue;
+    for (const item of trade.aPlayers || []) if (owners.has(item.playerId)) owners.set(item.playerId, trade.ownerBId);
+    for (const item of trade.bPlayers || []) if (owners.has(item.playerId)) owners.set(item.playerId, trade.ownerAId);
+  }
+  return owners;
+}
+
+function teamPlayers(ownerId) {
+  return rosteredPlayers()
+    .filter((player) => player.currentOwnerId === ownerId)
+    .map((player) => ({ ...player, acquiredFromId: player.draftedById !== ownerId ? player.draftedById : null }))
+    .sort((a, b) => (a.pickIndex || 0) - (b.pickIndex || 0));
 }
 
 function primaryPosition(player) {
@@ -786,17 +837,63 @@ function renderKeepers() {
 
 function overallPickNumber(originalOwnerId, round) { const index = basePickIndexFor(originalOwnerId, round); return index == null ? null : index + 1; }
 function pickNumberText(originalOwnerId, round) { const number = overallPickNumber(originalOwnerId, round); return number == null ? "" : "#" + number; }
-function pickRef(originalOwnerId, round) { return originalOwnerId + "|" + round; }
-function parsePickRef(ref) { const parts = ref.split("|"); return { originalOwnerId: parts[0], round: Number(parts[1]) }; }
+function pickRef(originalOwnerId, round, year) { return originalOwnerId + "|" + round + (year === "next" ? "|next" : ""); }
+function parsePickRef(ref) {
+  const parts = ref.split("|");
+  const pick = { originalOwnerId: parts[0], round: Number(parts[1]) };
+  if (parts[2] === "next") pick.year = "next";
+  return pick;
+}
+function playerRef(playerId) { return "player:" + playerId; }
+function isPlayerRef(ref) { return ref.startsWith("player:"); }
+
+// Next year's draft: order isn't known yet, so picks are named by round + original owner.
+function nextDraftYear() {
+  if (!state.nextDraftYear) state.nextDraftYear = new Date().getFullYear() + 1;
+  return state.nextDraftYear;
+}
+
+function nextYearPickHolders() {
+  const holders = new Map();
+  for (const owner of state.owners) for (let round = 1; round <= ROUNDS; round += 1) holders.set(pickRef(owner.id, round, "next"), owner.id);
+  for (const trade of state.pickTrades) {
+    if (trade.type !== "package") continue;
+    for (const pick of trade.aGives || []) if (pick.year === "next") holders.set(pickRef(pick.originalOwnerId, pick.round, "next"), trade.ownerBId);
+    for (const pick of trade.bGives || []) if (pick.year === "next") holders.set(pickRef(pick.originalOwnerId, pick.round, "next"), trade.ownerAId);
+  }
+  return holders;
+}
+
+function nextYearPickHoldings() {
+  const holders = nextYearPickHolders();
+  const holdings = Object.fromEntries(state.owners.map((owner) => [owner.id, []]));
+  for (let round = 1; round <= ROUNDS; round += 1) {
+    for (const original of state.owners) {
+      const ref = pickRef(original.id, round, "next");
+      const holderId = holders.get(ref);
+      if (holdings[holderId]) holdings[holderId].push({ originalOwnerId: original.id, round, year: "next", ref });
+    }
+  }
+  return holdings;
+}
+
+function pickLabel(pick, holderId) {
+  if (pick.year === "next") return nextDraftYear() + " R" + pick.round + (pick.originalOwnerId !== holderId ? " (" + ownerName(pick.originalOwnerId) + "'s)" : "");
+  return "R" + pick.round + " (" + pickNumberText(pick.originalOwnerId, pick.round) + (pick.originalOwnerId !== holderId ? ", " + ownerName(pick.originalOwnerId) + "'s" : "") + ")";
+}
 function pickCountText(count) { return count + " pick" + (count === 1 ? "" : "s"); }
 
 function currentPickHoldings() {
   const tradeMap = buildPickTradeMap();
+  const schedule = computePickSchedule();
+  const used = draftedPickMap();
   const holdings = Object.fromEntries(state.owners.map((owner) => [owner.id, []]));
   for (let round = 1; round <= ROUNDS; round += 1) {
     for (const original of state.owners) {
       const index = basePickIndexFor(original.id, round);
       if (index == null) continue;
+      // Once a pick has been used, the player is what gets traded, not the pick.
+      if (used.has(index) || keeperForScheduleIndex(schedule, index)) continue;
       const holderId = tradeMap.get(index) || original.id;
       if (holdings[holderId]) holdings[holderId].push({ originalOwnerId: original.id, round, ref: pickRef(original.id, round) });
     }
@@ -804,16 +901,43 @@ function currentPickHoldings() {
   return holdings;
 }
 
-function renderTradePickGrid(side, ownerId, holdings) {
+function renderTradePickGrid(side, ownerId, holdings, nextHoldings, roster) {
   const container = side === "a" ? els.tradePicksA : els.tradePicksB;
   const held = holdings[ownerId] || [];
-  const heldRefs = new Set(held.map((pick) => pick.ref));
-  for (const ref of Array.from(tradeSelection[side])) if (!heldRefs.has(ref)) tradeSelection[side].delete(ref);
-  container.innerHTML = held.length ? held.map((pick) => {
-    const selected = tradeSelection[side].has(pick.ref);
+  const nextHeld = nextHoldings[ownerId] || [];
+  const validRefs = new Set(held.map((pick) => pick.ref).concat(nextHeld.map((pick) => pick.ref), roster.map((player) => playerRef(player.id))));
+  for (const ref of Array.from(tradeSelection[side])) if (!validRefs.has(ref)) tradeSelection[side].delete(ref);
+  const button = (ref, title, inner, extraClass = "") => {
+    const selected = tradeSelection[side].has(ref);
+    return "<button type=\"button\" class=\"trade-pick" + extraClass + (selected ? " is-selected" : "") + "\" data-side=\"" + side + "\" data-ref=\"" + escapeHtml(ref) + "\" aria-pressed=\"" + selected + "\" title=\"" + escapeHtml(title) + "\">" + inner + "</button>";
+  };
+  const group = (label, items) => "<div class=\"trade-group-label\">" + escapeHtml(label) + "</div>" + (items.length ? items.join("") : "<div class=\"empty-state\">None</div>");
+  const thisYear = held.map((pick) => {
     const acquired = pick.originalOwnerId !== ownerId;
-    return "<button type=\"button\" class=\"trade-pick" + (selected ? " is-selected" : "") + (acquired ? " acquired" : "") + "\" data-side=\"" + side + "\" data-ref=\"" + escapeHtml(pick.ref) + "\" aria-pressed=\"" + selected + "\" title=\"" + escapeHtml(ownerName(pick.originalOwnerId)) + "'s round " + pick.round + " pick, overall " + pickNumberText(pick.originalOwnerId, pick.round) + "\"><strong>R" + pick.round + " <em>" + pickNumberText(pick.originalOwnerId, pick.round) + "</em></strong>" + (acquired ? "<span>" + escapeHtml(ownerName(pick.originalOwnerId)) + "</span>" : "") + "</button>";
-  }).join("") : "<div class=\"empty-state\">No picks left to trade.</div>";
+    return button(pick.ref, ownerName(pick.originalOwnerId) + "'s round " + pick.round + " pick, overall " + pickNumberText(pick.originalOwnerId, pick.round),
+      "<strong>R" + pick.round + " <em>" + pickNumberText(pick.originalOwnerId, pick.round) + "</em></strong>" + (acquired ? "<span>" + escapeHtml(ownerName(pick.originalOwnerId)) + "</span>" : ""), acquired ? " acquired" : "");
+  });
+  const nextYear = nextHeld.map((pick) => {
+    const acquired = pick.originalOwnerId !== ownerId;
+    return button(pick.ref, nextDraftYear() + " " + ownerName(pick.originalOwnerId) + "'s round " + pick.round + " pick",
+      "<strong>R" + pick.round + "</strong>" + (acquired ? "<span>" + escapeHtml(ownerName(pick.originalOwnerId)) + "</span>" : ""), " next-year" + (acquired ? " acquired" : ""));
+  });
+  const players = roster.map((player) => button(playerRef(player.id), player.player + (player.pos ? " \u00b7 " + player.pos : ""),
+    "<strong>" + escapeHtml(player.player) + "</strong><span>" + escapeHtml([player.pos, player.keeper ? "Keeper" : "", player.acquiredFromId ? "from " + ownerName(player.acquiredFromId) : ""].filter(Boolean).join(" \u00b7 ")) + "</span>", " trade-player"));
+  container.innerHTML = group("Players", players) + group("This year's picks", thisYear) + group(nextDraftYear() + " picks", nextYear);
+}
+
+function selectionCounts(side) {
+  const refs = Array.from(tradeSelection[side]);
+  const players = refs.filter(isPlayerRef).length;
+  return { players, picks: refs.length - players };
+}
+
+function sendsText(counts) {
+  const parts = [];
+  if (counts.players) parts.push(counts.players + " player" + (counts.players === 1 ? "" : "s"));
+  if (counts.picks || !counts.players) parts.push(pickCountText(counts.picks));
+  return parts.join(" + ");
 }
 
 function renderTradeSummary() {
@@ -822,9 +946,9 @@ function renderTradeSummary() {
   const aCount = tradeSelection.a.size;
   const bCount = tradeSelection.b.size;
   const sameOwner = ownerAId === ownerBId;
-  let text = ownerName(ownerAId) + " sends " + pickCountText(aCount) + " \u00b7 " + ownerName(ownerBId) + " sends " + pickCountText(bCount);
+  let text = ownerName(ownerAId) + " sends " + sendsText(selectionCounts("a")) + " \u00b7 " + ownerName(ownerBId) + " sends " + sendsText(selectionCounts("b"));
   if (sameOwner) text = "Choose two different owners.";
-  else if (!aCount && !bCount) text = "Tap the picks each owner is sending.";
+  else if (!aCount && !bCount) text = "Tap the players and picks each owner is sending.";
   els.tradeSummary.textContent = text;
   els.addTrade.disabled = sameOwner || (!aCount && !bCount);
   els.clearTrade.disabled = !aCount && !bCount;
@@ -838,18 +962,21 @@ function renderTradeControls() {
   els.tradeOwnerA.value = selectedA;
   els.tradeOwnerB.value = selectedB;
   const holdings = currentPickHoldings();
-  renderTradePickGrid("a", selectedA, holdings);
-  renderTradePickGrid("b", selectedB, holdings);
+  const nextHoldings = nextYearPickHoldings();
+  renderTradePickGrid("a", selectedA, holdings, nextHoldings, teamPlayers(selectedA));
+  renderTradePickGrid("b", selectedB, holdings, nextHoldings, teamPlayers(selectedB));
   renderTradeSummary();
 }
 
-function tradePicksText(ownerId, picks) {
-  if (!picks || !picks.length) return "nothing";
-  return picks.slice().sort((x, y) => x.round - y.round).map((pick) => "R" + pick.round + " (" + pickNumberText(pick.originalOwnerId, pick.round) + (pick.originalOwnerId !== ownerId ? ", " + ownerName(pick.originalOwnerId) + "'s" : "") + ")").join(", ");
+function tradePicksText(ownerId, picks, players) {
+  const parts = (players || []).map((item) => item.name);
+  const sorted = (picks || []).slice().sort((x, y) => (x.year === "next") - (y.year === "next") || x.round - y.round);
+  for (const pick of sorted) parts.push(pickLabel(pick, ownerId));
+  return parts.length ? parts.join(", ") : "nothing";
 }
 
 function tradeText(trade) {
-  if (trade.type === "package") return ownerName(trade.ownerAId) + " sends " + tradePicksText(trade.ownerAId, trade.aGives) + " \u00b7 " + ownerName(trade.ownerBId) + " sends " + tradePicksText(trade.ownerBId, trade.bGives);
+  if (trade.type === "package") return ownerName(trade.ownerAId) + " sends " + tradePicksText(trade.ownerAId, trade.aGives, trade.aPlayers) + " \u00b7 " + ownerName(trade.ownerBId) + " sends " + tradePicksText(trade.ownerBId, trade.bGives, trade.bPlayers);
   const fromText = " R" + trade.fromRound + " (" + pickNumberText(trade.fromOwnerId, trade.fromRound) + ")";
   if (trade.type === "swap") return ownerName(trade.fromOwnerId) + fromText + " for " + ownerName(trade.toOwnerId) + " R" + trade.toRound + " (" + pickNumberText(trade.toOwnerId, trade.toRound) + ")";
   return ownerName(trade.fromOwnerId) + fromText + " to " + ownerName(trade.toOwnerId);
@@ -857,10 +984,13 @@ function tradeText(trade) {
 
 function tradeKindText(trade) {
   if (trade.type === "package") {
-    const aCount = (trade.aGives || []).length;
-    const bCount = (trade.bGives || []).length;
-    if (!aCount || !bCount) return "One-way transfer of " + pickCountText(aCount + bCount);
-    return aCount + "-for-" + bCount + " pick trade";
+    const aCount = (trade.aGives || []).length + (trade.aPlayers || []).length;
+    const bCount = (trade.bGives || []).length + (trade.bPlayers || []).length;
+    const hasPlayers = (trade.aPlayers || []).length || (trade.bPlayers || []).length;
+    const hasNext = (trade.aGives || []).concat(trade.bGives || []).some((pick) => pick.year === "next");
+    const kind = hasPlayers ? "player trade" : hasNext ? "pick trade (includes " + nextDraftYear() + " picks)" : "pick trade";
+    if (!aCount || !bCount) return "One-way " + kind;
+    return aCount + "-for-" + bCount + " " + kind;
   }
   return trade.type === "swap" ? "Specific pick swap" : "One-way pick transfer";
 }
@@ -920,6 +1050,28 @@ function renderPickMap() {
   }).join("");
 }
 
+function renderNextYearPickMap() {
+  if (!els.pickMapNextBody) return;
+  const holders = nextYearPickHolders();
+  if (els.pickMapNextTitle) els.pickMapNextTitle.textContent = nextDraftYear() + " Picks";
+  els.pickMapNextBody.innerHTML = state.owners.map((owner) => {
+    let total = 0;
+    const cells = [];
+    for (let round = 1; round <= ROUNDS; round += 1) {
+      const entries = state.owners.filter((original) => holders.get(pickRef(original.id, round, "next")) === owner.id);
+      total += entries.length;
+      if (!entries.length) { cells.push("<td class=\"pick-map-cell empty\" title=\"Traded away\">\u2014</td>"); continue; }
+      const gained = entries.some((original) => original.id !== owner.id);
+      const html = entries.slice().sort((x, y) => Number(y.id === owner.id) - Number(x.id === owner.id)).map((original) => original.id === owner.id
+        ? "<span class=\"pick-map-num\" title=\"Own pick\">Own</span>"
+        : "<span class=\"pick-map-gained\" title=\"From " + escapeHtml(original.owner) + "\">" + escapeHtml(original.owner) + "</span>").join("");
+      cells.push("<td class=\"pick-map-cell" + (gained ? " has-gained" : "") + "\"><div class=\"pick-map-stack\">" + html + "</div></td>");
+    }
+    const totalClass = total > ROUNDS ? " over" : total < ROUNDS ? " under" : "";
+    return "<tr><th scope=\"row\">" + escapeHtml(owner.owner) + "</th>" + cells.join("") + "<td class=\"pick-map-total" + totalClass + "\">" + total + "</td></tr>";
+  }).join("");
+}
+
 function normalizeTradeType(value) {
   const tradeType = key(value);
   if (["transfer", "one-way", "one way", "move"].includes(tradeType)) return "transfer";
@@ -948,8 +1100,9 @@ function parseRoundList(value) {
 
 function tradeKey(trade) {
   if (trade.type === "package") {
-    const refs = (picks) => (picks || []).map((pick) => pickRef(pick.originalOwnerId, pick.round)).sort().join(",");
-    return ["package", trade.ownerAId, refs(trade.aGives), trade.ownerBId, refs(trade.bGives)].join("|");
+    const refs = (picks) => (picks || []).map((pick) => pickRef(pick.originalOwnerId, pick.round, pick.year)).sort().join(",");
+    const ids = (players) => (players || []).map((item) => item.playerId).sort().join(",");
+    return ["package", trade.ownerAId, refs(trade.aGives), ids(trade.aPlayers), trade.ownerBId, refs(trade.bGives), ids(trade.bPlayers)].join("|");
   }
   return [trade.type, trade.fromOwnerId, trade.fromRound, trade.toOwnerId, trade.toRound || ""].join("|");
 }
@@ -1014,11 +1167,19 @@ function addTradeFromForm() {
   const ownerAId = els.tradeOwnerA.value;
   const ownerBId = els.tradeOwnerB.value;
   if (ownerAId === ownerBId) return alert("Pick trades need two different owners.");
-  const aGives = Array.from(tradeSelection.a).map(parsePickRef).sort((x, y) => x.round - y.round);
-  const bGives = Array.from(tradeSelection.b).map(parsePickRef).sort((x, y) => x.round - y.round);
-  if (!aGives.length && !bGives.length) return alert("Select at least one pick to trade.");
-  if (state.picks.length && !confirm("Adding trades after picks exist can make the board confusing. Add it anyway?")) return;
-  const trade = { id: crypto.randomUUID(), type: "package", ownerAId, ownerBId, aGives, bGives };
+  const rostered = new Map(rosteredPlayers().map((player) => [player.id, player]));
+  const split = (side) => {
+    const refs = Array.from(tradeSelection[side]);
+    const picks = refs.filter((ref) => !isPlayerRef(ref)).map(parsePickRef).sort((x, y) => (x.year === "next") - (y.year === "next") || x.round - y.round);
+    const players = refs.filter(isPlayerRef).map((ref) => ref.slice(7)).map((playerId) => ({ playerId, name: rostered.get(playerId) ? rostered.get(playerId).player : playerId }));
+    return { picks, players };
+  };
+  const a = split("a");
+  const b = split("b");
+  if (!a.picks.length && !b.picks.length && !a.players.length && !b.players.length) return alert("Select at least one player or pick to trade.");
+  const movesThisYearPicks = a.picks.concat(b.picks).some((pick) => pick.year !== "next");
+  if (movesThisYearPicks && state.picks.length && !confirm("This trade moves picks in the current draft. Add it?")) return;
+  const trade = { id: crypto.randomUUID(), type: "package", ownerAId, ownerBId, aGives: a.picks, bGives: b.picks, aPlayers: a.players, bPlayers: b.players, addedAt: new Date().toISOString() };
   state.pickTrades.push(trade);
   tradeSelection = { a: new Set(), b: new Set() };
   saveState({ label: "Trade added: " + tradeText(trade) });
@@ -1116,6 +1277,7 @@ function renderBoard() {
   const schedule = computePickSchedule();
   const picks = draftedPickMap();
   const keeperCount = allKeeperPlayers().length;
+  const playerOwners = currentPlayerOwners();
   els.draftBoard.innerHTML = "";
   els.draftCount.textContent = (state.picks.length + keeperCount) + " filled / " + schedule.length + " picks";
   const nextSlot = currentSchedulePick();
@@ -1129,17 +1291,24 @@ function renderBoard() {
     const player = keeper || (pick ? byId.get(pick.playerId) : null);
     const card = document.createElement("article");
     card.className = "pick-card" + (player || slot.skipped ? "" : " empty") + (keeper ? " keeper" : "") + (slot.traded ? " traded" : "") + (slot.compensation ? " compensation" : "") + (slot.skipped ? " skipped" : "");
-    const ownerLine = slot.traded ? escapeHtml(owner.team) + " <span>from " + escapeHtml(originalOwner.team) + "</span>" : escapeHtml(owner.team);
-    card.innerHTML = "<div class=\"pick-meta\"><span>" + escapeHtml(slot.roundLabel) + "</span><span>Pick " + (i + 1) + "</span></div>" + pickPlayerHtml(slot.skipped ? null : player, slot.skipped ? "Roster Full" : (player ? player.player : "Available")) + "<div class=\"pick-owner\">" + ownerLine + "</div>";
+    card.innerHTML = pickCardHtml(slot, i, pick, keeper, player, false, playerOwners);
     els.draftBoard.append(card);
   }
   fitPlayerNames(els.draftBoard);
 }
 
-function pickCardHtml(slot, index, pick, keeper, player, compact = false) {
+// playerId -> owner who has the player now (after player trades).
+function currentPlayerOwners() {
+  return new Map(rosteredPlayers().map((player) => [player.id, player.currentOwnerId]));
+}
+
+function pickCardHtml(slot, index, pick, keeper, player, compact = false, playerOwners = null) {
   const owner = pick ? ownerById(pick.ownerId) : ownerById(slot.ownerId);
   const originalOwner = ownerById(slot.originalOwnerId);
-  const ownerLine = slot.traded ? escapeHtml(owner.team) + " <span>from " + escapeHtml(originalOwner.team) + "</span>" : escapeHtml(owner.team);
+  let ownerLine = slot.traded ? escapeHtml(owner.team) + " <span>from " + escapeHtml(originalOwner.team) + "</span>" : escapeHtml(owner.team);
+  const playerId = keeper ? keeper.playerId : (player ? player.id : null);
+  const nowOwnerId = playerId && playerOwners ? playerOwners.get(playerId) : null;
+  if (nowOwnerId && nowOwnerId !== owner.id) ownerLine += " <span class=\"pick-traded-to\">\u2192 " + escapeHtml(ownerName(nowOwnerId)) + "</span>";
   const playerName = slot.skipped ? "Roster Full" : (player ? player.player : "Available");
   return "<div class=\"pick-meta\"><span>" + escapeHtml(slot.roundLabel) + "</span><span>Pick " + (index + 1) + "</span></div>" + pickPlayerHtml(slot.skipped ? null : player, playerName) + "<div class=\"pick-owner\">" + ownerLine + "</div>";
 }
@@ -1151,6 +1320,7 @@ function renderOwnerDraftBoard(ownerId) {
   const nextIndex = nextOpenScheduleIndex();
   const rounds = new Map();
   els.ownerDraftBoard.innerHTML = "";
+  const playerOwners = currentPlayerOwners();
   els.ownerBoardCount.textContent = (state.picks.length + allKeeperPlayers().length) + " filled";
 
   for (let i = 0; i < schedule.length; i += 1) {
@@ -1171,7 +1341,7 @@ function renderOwnerDraftBoard(ownerId) {
       const player = keeper || (pick ? byId.get(pick.playerId) : null);
       const card = document.createElement("article");
       card.className = "pick-card owner-board-card" + (player || slot.skipped ? "" : " empty") + (keeper ? " keeper" : "") + (slot.traded ? " traded" : "") + (slot.compensation ? " compensation" : "") + (slot.skipped ? " skipped" : "") + (index === nextIndex ? " on-clock-card" : "") + (slot.ownerId === ownerId ? " my-pick-card" : "");
-      card.innerHTML = pickCardHtml(slot, index, pick, keeper, player, true);
+      card.innerHTML = pickCardHtml(slot, index, pick, keeper, player, true, playerOwners);
       picksWrap.append(card);
     }
 
@@ -1383,7 +1553,7 @@ function renderOwnerRoster(defaultOwnerId) {
   els.ownerRosterCount.textContent = roster.length + " player" + (roster.length === 1 ? "" : "s");
   els.ownerRosterBody.innerHTML = roster.length ? roster.map((player) => {
     const pickLabel = player.keeper ? "K" : (player.pickIndex == null ? "-" : "Pick " + (player.pickIndex + 1));
-    return "<tr><td>" + pickLabel + "</td><td>" + escapeHtml(player.player) + (player.keeper ? " <strong>(K)</strong>" : "") + "</td><td>" + escapeHtml(player.pos) + "</td><td>" + escapeHtml(player.team) + "</td><td>" + statText(player, "pts") + "</td><td>" + statText(player, "ast") + "</td><td>" + statText(player, "stl") + "</td><td>" + statText(player, "reb") + "</td><td>" + statText(player, "blk") + "</td><td>" + statText(player, "to") + "</td><td>" + statText(player, "fg_pct", 3) + "</td><td>" + statText(player, "ft_pct", 3) + "</td><td>" + statText(player, "threepm") + "</td>" + totalCellHtml(player) + "</tr>";
+    return "<tr><td>" + pickLabel + "</td><td>" + escapeHtml(player.player) + (player.keeper ? " <strong>(K)</strong>" : "") + (player.acquiredFromId ? " <span class=\"roster-trade-tag\">via trade from " + escapeHtml(ownerName(player.acquiredFromId)) + "</span>" : "") + "</td><td>" + escapeHtml(player.pos) + "</td><td>" + escapeHtml(player.team) + "</td><td>" + statText(player, "pts") + "</td><td>" + statText(player, "ast") + "</td><td>" + statText(player, "stl") + "</td><td>" + statText(player, "reb") + "</td><td>" + statText(player, "blk") + "</td><td>" + statText(player, "to") + "</td><td>" + statText(player, "fg_pct", 3) + "</td><td>" + statText(player, "ft_pct", 3) + "</td><td>" + statText(player, "threepm") + "</td>" + totalCellHtml(player) + "</tr>";
   }).join("") : "<tr><td class=\"empty-state\" colspan=\"13\">No players drafted yet.</td></tr>";
 }
 
@@ -1677,6 +1847,7 @@ function render() {
   renderKeepers();
   renderTrades();
   renderPickMap();
+  renderNextYearPickMap();
   setSetupTab(activeSetupTab);
   renderSelects();
   renderBoard();
